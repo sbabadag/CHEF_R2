@@ -3,7 +3,7 @@ const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c';
 
 // Test mode - set to true for offline testing
-const TEST_MODE = true;
+const TEST_MODE = false;
 
 // Initialize Supabase client
 let supabase = null;
@@ -21,8 +21,8 @@ if (typeof window.supabase !== 'undefined') {
 }
 
 // Global variables
-let selectedDrink = null;
-let currentOrderId = null;
+let selectedDrinks = []; // Birden fazla içecek için array
+let currentOrderIds = []; // Birden fazla sipariş ID'si
 let statusCheckInterval = null;
 
 // DOM Elements
@@ -84,11 +84,20 @@ function setupEventListeners() {
         userForm.addEventListener('submit', handleUserInfoSubmit);
     }
     
-    // Drink selection
+    // Drink selection - multiple selection support
     const drinkOptions = document.querySelectorAll('.drink-option');
     drinkOptions.forEach(option => {
-        option.addEventListener('click', () => selectDrink(option));
+        option.addEventListener('click', (e) => {
+            // Prevent event bubbling for quantity buttons
+            if (e.target.classList.contains('quantity-btn')) {
+                return;
+            }
+            toggleDrinkSelection(option);
+        });
     });
+    
+    // Quantity controls
+    setupQuantityControls();
     
     // Navigation buttons
     const continueBtn = document.getElementById('continue-to-drinks');
@@ -102,6 +111,14 @@ function setupEventListeners() {
     if (backToUserBtn) {
         backToUserBtn.addEventListener('click', () => {
             showCard('user-info');
+        });
+    }
+    
+    const continueToConfirmationBtn = document.getElementById('continue-to-confirmation');
+    if (continueToConfirmationBtn) {
+        continueToConfirmationBtn.addEventListener('click', () => {
+            updateOrderSummary();
+            showCard('order-confirmation');
         });
     }
     
@@ -124,6 +141,109 @@ function setupEventListeners() {
             showCard('user-info');
         });
     }
+}
+
+function setupQuantityControls() {
+    const quantityButtons = document.querySelectorAll('.quantity-btn');
+    quantityButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent drink selection toggle
+            const drinkOption = btn.closest('.drink-option');
+            const quantitySpan = drinkOption.querySelector('.quantity');
+            const isPlus = btn.classList.contains('plus');
+            let currentQuantity = parseInt(quantitySpan.textContent);
+            
+            if (isPlus) {
+                currentQuantity++;
+            } else if (currentQuantity > 1) {
+                currentQuantity--;
+            } else if (currentQuantity === 1) {
+                // If quantity becomes 0, deselect the drink
+                toggleDrinkSelection(drinkOption);
+                return;
+            }
+            
+            quantitySpan.textContent = currentQuantity;
+            updateSelectedDrink(drinkOption, currentQuantity);
+            updateSelectedDrinksSummary();
+        });
+    });
+}
+
+function toggleDrinkSelection(drinkElement) {
+    const drinkName = drinkElement.dataset.drink;
+    const quantityControls = drinkElement.querySelector('.quantity-controls');
+    const quantitySpan = drinkElement.querySelector('.quantity');
+    
+    if (drinkElement.classList.contains('selected')) {
+        // Deselect drink
+        drinkElement.classList.remove('selected');
+        quantityControls.style.display = 'none';
+        
+        // Remove from selectedDrinks array
+        selectedDrinks = selectedDrinks.filter(drink => drink.name !== drinkName);
+    } else {
+        // Select drink
+        drinkElement.classList.add('selected');
+        quantityControls.style.display = 'flex';
+        quantitySpan.textContent = '1';
+        
+        // Add to selectedDrinks array
+        const drinkData = {
+            name: drinkName,
+            icon: drinkElement.querySelector('i').className,
+            description: drinkElement.querySelector('p').textContent,
+            quantity: 1
+        };
+        selectedDrinks.push(drinkData);
+    }
+    
+    updateSelectedDrinksSummary();
+}
+
+function updateSelectedDrink(drinkElement, quantity) {
+    const drinkName = drinkElement.dataset.drink;
+    const existingDrink = selectedDrinks.find(drink => drink.name === drinkName);
+    
+    if (existingDrink) {
+        existingDrink.quantity = quantity;
+    }
+}
+
+function updateSelectedDrinksSummary() {
+    const summaryDiv = document.getElementById('selected-drinks-summary');
+    const listDiv = document.getElementById('selected-drinks-list');
+    const totalCountSpan = document.getElementById('total-count');
+    const continueBtn = document.getElementById('continue-to-confirmation');
+    
+    if (selectedDrinks.length === 0) {
+        summaryDiv.style.display = 'none';
+        continueBtn.style.display = 'none';
+        return;
+    }
+    
+    summaryDiv.style.display = 'block';
+    continueBtn.style.display = 'inline-flex';
+    
+    // Clear existing list
+    listDiv.innerHTML = '';
+    
+    // Add selected drinks to list
+    let totalCount = 0;
+    selectedDrinks.forEach(drink => {
+        totalCount += drink.quantity;
+        
+        const drinkItem = document.createElement('div');
+        drinkItem.className = 'selected-drink-item';
+        drinkItem.innerHTML = `
+            <i class="${drink.icon}"></i>
+            <span>${drink.name}</span>
+            <div class="selected-drink-quantity">${drink.quantity}</div>
+        `;
+        listDiv.appendChild(drinkItem);
+    });
+    
+    totalCountSpan.textContent = totalCount;
 }
 
 function handleUserInfoSubmit(e) {
@@ -206,20 +326,40 @@ function selectDrink(drinkElement) {
 }
 
 function updateOrderSummary() {
-    if (!selectedDrink) return;
+    if (!selectedDrinks || selectedDrinks.length === 0) return;
     
     const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
     
+    // Update user info
     document.getElementById('summary-user').innerHTML = `
         <strong>${userData.name}</strong>
         <span>${userData.department} Departmanı</span>
     `;
     
-    document.getElementById('summary-drink').innerHTML = `
-        <strong>${selectedDrink.name}</strong>
-        <span>${selectedDrink.description}</span>
-    `;
+    // Update drinks list
+    const drinksList = document.getElementById('summary-drinks-list');
+    drinksList.innerHTML = '';
     
+    let totalCount = 0;
+    selectedDrinks.forEach(drink => {
+        totalCount += drink.quantity;
+        
+        const drinkItem = document.createElement('div');
+        drinkItem.className = 'summary-drink-item';
+        drinkItem.innerHTML = `
+            <div class="summary-drink-info">
+                <i class="${drink.icon}"></i>
+                <span>${drink.name}</span>
+            </div>
+            <div class="summary-drink-quantity">${drink.quantity}x</div>
+        `;
+        drinksList.appendChild(drinkItem);
+    });
+    
+    // Update total
+    document.getElementById('summary-total-count').textContent = `${totalCount} içecek`;
+    
+    // Update time
     const now = new Date();
     document.getElementById('summary-time').innerHTML = `
         <strong>Sipariş Zamanı</strong>
@@ -230,12 +370,136 @@ function updateOrderSummary() {
 async function confirmOrder() {
     const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
     
-    if (!userData.name || !userData.department || !selectedDrink) {
+    if (!userData.name || !userData.department || !selectedDrinks || selectedDrinks.length === 0) {
         showToast('Lütfen tüm bilgileri doldurun!', 'error');
         return;
     }
     
-    showLoading('Sipariş gönderiliyor...');
+    showLoading('Siparişler gönderiliyor...');
+    
+    try {
+        let useTestMode = TEST_MODE || !supabase;
+        currentOrderIds = []; // Reset order IDs
+        
+        if (!TEST_MODE && supabase) {
+            // Try real mode first - create separate order for each drink
+            try {
+                const orderPromises = [];
+                
+                selectedDrinks.forEach(drink => {
+                    // Create multiple orders if quantity > 1
+                    for (let i = 0; i < drink.quantity; i++) {
+                        orderPromises.push(
+                            supabase
+                                .from('drink_orders')
+                                .insert([
+                                    {
+                                        customer_name: userData.name,
+                                        department: userData.department,
+                                        drink_type: drink.name,
+                                        status: 'new',
+                                        created_at: new Date().toISOString()
+                                    }
+                                ])
+                                .select()
+                        );
+                    }
+                });
+                
+                const results = await Promise.all(orderPromises);
+                
+                // Check for errors
+                const errors = results.filter(result => result.error);
+                if (errors.length > 0) {
+                    console.error('Supabase errors:', errors);
+                    const firstError = errors[0].error;
+                    
+                    // Switch to test mode if API key is invalid
+                    if (firstError.message.includes('Invalid API key') || 
+                        firstError.message.includes('401') || 
+                        firstError.message.includes('authentication')) {
+                        console.log('API key error detected, switching to test mode');
+                        showToast('API anahtarı sorunu. Test modunda devam ediliyor.', 'error');
+                        useTestMode = true;
+                    } else {
+                        throw firstError;
+                    }
+                }
+                
+                if (!useTestMode) {
+                    // Collect all order IDs
+                    results.forEach(result => {
+                        if (result.data && result.data.length > 0) {
+                            currentOrderIds.push(result.data[0].id);
+                        }
+                    });
+                    
+                    // Show success card
+                    hideLoading();
+                    showCard('success');
+                    
+                    // Update success message
+                    const successTitle = document.querySelector('.success-card h2');
+                    const successText = document.querySelector('.success-card p');
+                    if (successTitle) successTitle.textContent = 'Siparişleriniz Alındı! 🎉';
+                    if (successText) {
+                        const totalOrders = currentOrderIds.length;
+                        successText.textContent = `${totalOrders} adet sipariş başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz.`;
+                    }
+                    
+                    // Start real status tracking
+                    startStatusTracking();
+                    
+                    showToast(`${currentOrderIds.length} sipariş başarıyla oluşturuldu!`, 'success');
+                    return;
+                }
+                
+            } catch (realModeError) {
+                console.error('Real mode failed:', realModeError);
+                showToast('Veritabanı hatası. Test moduna geçiliyor.', 'error');
+                useTestMode = true;
+            }
+        }
+        
+        if (useTestMode) {
+            // Test mode - simulate successful orders
+            console.log('TEST MODE: Simulating order creation');
+            
+            // Simulate delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Create mock order IDs
+            let totalOrders = 0;
+            selectedDrinks.forEach(drink => {
+                for (let i = 0; i < drink.quantity; i++) {
+                    currentOrderIds.push(Math.floor(Math.random() * 1000) + totalOrders);
+                    totalOrders++;
+                }
+            });
+            
+            // Show success card
+            hideLoading();
+            showCard('success');
+            
+            // Update success message
+            const successTitle = document.querySelector('.success-card h2');
+            const successText = document.querySelector('.success-card p');
+            if (successTitle) successTitle.textContent = 'Siparişleriniz Alındı! 🎉';
+            if (successText) successText.textContent = 
+                `${totalOrders} adet sipariş başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz. (Test Modu)`;
+            
+            // Start test status tracking
+            startTestStatusTracking();
+            
+            showToast(`${totalOrders} sipariş başarıyla oluşturuldu! (Test Modu)`, 'success');
+        }
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error creating orders:', error);
+        showToast('Siparişler oluşturulurken bir hata oluştu: ' + error.message, 'error');
+    }
+}
     
     try {
         let useTestMode = TEST_MODE || !supabase;
@@ -499,8 +763,8 @@ function showToast(message, type = 'info') {
 
 function resetApp() {
     // Clear selections
-    selectedDrink = null;
-    currentOrderId = null;
+    selectedDrinks = [];
+    currentOrderIds = [];
     
     // Clear status interval
     if (statusCheckInterval) {
@@ -509,18 +773,36 @@ function resetApp() {
     }
     
     // Reset form
-    document.getElementById('user-form').reset();
+    const userForm = document.getElementById('user-form');
+    if (userForm) userForm.reset();
     
     // Reset drink selections
     document.querySelectorAll('.drink-option').forEach(option => {
         option.classList.remove('selected');
+        const quantityControls = option.querySelector('.quantity-controls');
+        if (quantityControls) {
+            quantityControls.style.display = 'none';
+        }
+        const quantitySpan = option.querySelector('.quantity');
+        if (quantitySpan) {
+            quantitySpan.textContent = '1';
+        }
     });
     
+    // Reset summary
+    const summaryDiv = document.getElementById('selected-drinks-summary');
+    const continueBtn = document.getElementById('continue-to-confirmation');
+    if (summaryDiv) summaryDiv.style.display = 'none';
+    if (continueBtn) continueBtn.style.display = 'none';
+    
     // Reset header user info
-    document.querySelector('.user-info').innerHTML = `
-        <i class="fas fa-user-clock"></i>
-        <span>Giriş yapın</span>
-    `;
+    const userInfo = document.querySelector('.user-info');
+    if (userInfo) {
+        userInfo.innerHTML = `
+            <i class="fas fa-user-clock"></i>
+            <span>Giriş yapın</span>
+        `;
+    }
     
     console.log('App reset completed');
 }

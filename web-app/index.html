@@ -78,7 +78,7 @@
                 <div class="card-header">
                     <i class="fas fa-coffee"></i>
                     <h2>İçecek Seçin</h2>
-                    <p>Hangi içeceği tercih ediyorsunuz?</p>
+                    <p>İstediğiniz içecekleri seçin (birden fazla seçebilirsiniz)</p>
                 </div>
                 <div class="card-body">
                     <div class="drinks-grid">
@@ -86,38 +86,83 @@
                             <i class="drink-icon fas fa-leaf"></i>
                             <h3>Çay</h3>
                             <p>Sıcak türk çayı</p>
+                            <div class="quantity-controls" style="display: none;">
+                                <button type="button" class="quantity-btn minus">-</button>
+                                <span class="quantity">1</span>
+                                <button type="button" class="quantity-btn plus">+</button>
+                            </div>
                         </div>
                         <div class="drink-option" data-drink="Kahve">
                             <i class="drink-icon fas fa-coffee"></i>
                             <h3>Kahve</h3>
                             <p>Taze kahve</p>
+                            <div class="quantity-controls" style="display: none;">
+                                <button type="button" class="quantity-btn minus">-</button>
+                                <span class="quantity">1</span>
+                                <button type="button" class="quantity-btn plus">+</button>
+                            </div>
                         </div>
                         <div class="drink-option" data-drink="Su">
                             <i class="drink-icon fas fa-tint"></i>
                             <h3>Su</h3>
                             <p>Soğuk içme suyu</p>
+                            <div class="quantity-controls" style="display: none;">
+                                <button type="button" class="quantity-btn minus">-</button>
+                                <span class="quantity">1</span>
+                                <button type="button" class="quantity-btn plus">+</button>
+                            </div>
                         </div>
                         <div class="drink-option" data-drink="Ayran">
                             <i class="drink-icon fas fa-glass-whiskey"></i>
                             <h3>Ayran</h3>
                             <p>Soğuk ayran</p>
+                            <div class="quantity-controls" style="display: none;">
+                                <button type="button" class="quantity-btn minus">-</button>
+                                <span class="quantity">1</span>
+                                <button type="button" class="quantity-btn plus">+</button>
+                            </div>
                         </div>
                         <div class="drink-option" data-drink="Meyve Suyu">
                             <i class="drink-icon fas fa-apple-alt"></i>
                             <h3>Meyve Suyu</h3>
                             <p>Taze meyve suyu</p>
+                            <div class="quantity-controls" style="display: none;">
+                                <button type="button" class="quantity-btn minus">-</button>
+                                <span class="quantity">1</span>
+                                <button type="button" class="quantity-btn plus">+</button>
+                            </div>
                         </div>
                         <div class="drink-option" data-drink="Limonata">
                             <i class="drink-icon fas fa-lemon"></i>
                             <h3>Limonata</h3>
                             <p>Taze limonata</p>
+                            <div class="quantity-controls" style="display: none;">
+                                <button type="button" class="quantity-btn minus">-</button>
+                                <span class="quantity">1</span>
+                                <button type="button" class="quantity-btn plus">+</button>
+                            </div>
                         </div>
                     </div>
+                    
+                    <!-- Selected Drinks Summary -->
+                    <div class="selected-drinks-summary" id="selected-drinks-summary" style="display: none;">
+                        <h4><i class="fas fa-shopping-cart"></i> Seçilen İçecekler</h4>
+                        <div class="selected-drinks-list" id="selected-drinks-list"></div>
+                        <div class="total-info">
+                            <strong>Toplam: <span id="total-count">0</span> içecek</strong>
+                        </div>
+                    </div>
+                    
                     <div class="confirmation-actions">
                         <button type="button" class="btn btn-secondary" id="back-to-user-info">
                             <i class="fas fa-arrow-left"></i>
                             Geri
                         </button>
+                        <button type="button" class="btn btn-primary" id="continue-to-confirmation" style="display: none;">
+                            <i class="fas fa-arrow-right"></i>
+                            Devam Et
+                        </button>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -140,9 +185,16 @@
                         </div>
                         <div class="summary-item">
                             <i class="fas fa-coffee"></i>
-                            <div id="summary-drink">
-                                <strong>İçecek</strong>
-                                <span>-</span>
+                            <div id="summary-drinks">
+                                <strong>İçecekler</strong>
+                                <div class="summary-drinks-list" id="summary-drinks-list">-</div>
+                            </div>
+                        </div>
+                        <div class="summary-item">
+                            <i class="fas fa-calculator"></i>
+                            <div id="summary-total">
+                                <strong>Toplam</strong>
+                                <span id="summary-total-count">0 içecek</span>
                             </div>
                         </div>
                         <div class="summary-item">
