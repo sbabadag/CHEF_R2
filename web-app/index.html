@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AVM Grup - Mutfak Sipariş Sistemi</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-coffee"></i>
+                    <h1>AVM Grup</h1>
+                    <span>Mutfak Sipariş Sistemi</span>
+                </div>
+                <div class="header-info">
+                    <div class="user-info" id="userInfo">
+                        <i class="fas fa-user"></i>
+                        <span>Hoş Geldiniz</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- User Registration Form -->
+            <div class="card user-card" id="userCard">
+                <div class="card-header">
+                    <i class="fas fa-user-plus"></i>
+                    <h2>Sipariş Bilgileri</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label for="userName">
+                            <i class="fas fa-user"></i>
+                            İsim Soyisim
+                        </label>
+                        <input type="text" id="userName" placeholder="Adınızı ve soyadınızı girin" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="userDepartment">
+                            <i class="fas fa-building"></i>
+                            Departman/Ofis
+                        </label>
+                        <select id="userDepartment" required>
+                            <option value="">Departman seçin</option>
+                            <option value="Yönetim">Yönetim</option>
+                            <option value="Muhasebe">Muhasebe</option>
+                            <option value="Pazarlama">Pazarlama</option>
+                            <option value="İnsan Kaynakları">İnsan Kaynakları</option>
+                            <option value="IT">IT</option>
+                            <option value="Satış">Satış</option>
+                            <option value="Üretim">Üretim</option>
+                            <option value="Kalite Kontrol">Kalite Kontrol</option>
+                            <option value="Lojistik">Lojistik</option>
+                            <option value="Diğer">Diğer</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="registerUser()">
+                        <i class="fas fa-arrow-right"></i>
+                        Devam Et
+                    </button>
+                </div>
+            </div>
+
+            <!-- Drink Selection -->
+            <div class="card drinks-card" id="drinksCard" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-coffee"></i>
+                    <h2>İçecek Seçin</h2>
+                    <p>Hangi içeceği tercih ediyorsunuz?</p>
+                </div>
+                <div class="card-body">
+                    <div class="drinks-grid">
+                        <div class="drink-option" onclick="selectDrink('Çay')">
+                            <div class="drink-icon">🍵</div>
+                            <h3>Çay</h3>
+                            <p>Sıcak türk çayı</p>
+                        </div>
+                        <div class="drink-option" onclick="selectDrink('Kahve')">
+                            <div class="drink-icon">☕</div>
+                            <h3>Kahve</h3>
+                            <p>Taze kahve</p>
+                        </div>
+                        <div class="drink-option" onclick="selectDrink('Su')">
+                            <div class="drink-icon">💧</div>
+                            <h3>Su</h3>
+                            <p>Soğuk içme suyu</p>
+                        </div>
+                        <div class="drink-option" onclick="selectDrink('Ayran')">
+                            <div class="drink-icon">🥛</div>
+                            <h3>Ayran</h3>
+                            <p>Soğuk ayran</p>
+                        </div>
+                        <div class="drink-option" onclick="selectDrink('Meyve Suyu')">
+                            <div class="drink-icon">🧃</div>
+                            <h3>Meyve Suyu</h3>
+                            <p>Taze meyve suyu</p>
+                        </div>
+                        <div class="drink-option" onclick="selectDrink('Limonata')">
+                            <div class="drink-icon">🍋</div>
+                            <h3>Limonata</h3>
+                            <p>Taze limonata</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order Confirmation -->
+            <div class="card confirmation-card" id="confirmationCard" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-check-circle"></i>
+                    <h2>Sipariş Özeti</h2>
+                </div>
+                <div class="card-body">
+                    <div class="order-summary">
+                        <div class="summary-item">
+                            <i class="fas fa-user"></i>
+                            <div>
+                                <strong>Sipariş Veren</strong>
+                                <span id="summaryName"></span>
+                            </div>
+                        </div>
+                        <div class="summary-item">
+                            <i class="fas fa-building"></i>
+                            <div>
+                                <strong>Departman</strong>
+                                <span id="summaryDepartment"></span>
+                            </div>
+                        </div>
+                        <div class="summary-item">
+                            <i class="fas fa-coffee"></i>
+                            <div>
+                                <strong>İçecek</strong>
+                                <span id="summaryDrink"></span>
+                            </div>
+                        </div>
+                        <div class="summary-item">
+                            <i class="fas fa-clock"></i>
+                            <div>
+                                <strong>Sipariş Zamanı</strong>
+                                <span id="summaryTime"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="confirmation-actions">
+                        <button class="btn btn-secondary" onclick="goBack()">
+                            <i class="fas fa-arrow-left"></i>
+                            Geri Dön
+                        </button>
+                        <button class="btn btn-success" onclick="submitOrder()">
+                            <i class="fas fa-paper-plane"></i>
+                            Siparişi Gönder
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Success Message -->
+            <div class="card success-card" id="successCard" style="display: none;">
+                <div class="card-body text-center">
+                    <div class="success-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h2>Sipariş Başarıyla Gönderildi!</h2>
+                    <p>Siparişiniz mutfağa iletildi. Hazır olduğunda bilgilendirileceksiniz.</p>
+                    <div class="order-status" id="orderStatus">
+                        <div class="status-item active">
+                            <i class="fas fa-paper-plane"></i>
+                            <span>Sipariş Gönderildi</span>
+                        </div>
+                        <div class="status-item" id="statusReceived">
+                            <i class="fas fa-eye"></i>
+                            <span>Mutfak Tarafından Görüldü</span>
+                        </div>
+                        <div class="status-item" id="statusReady">
+                            <i class="fas fa-check"></i>
+                            <span>Hazır</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="newOrder()">
+                        <i class="fas fa-plus"></i>
+                        Yeni Sipariş
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 AVM Grup. Tüm hakları saklıdır.</p>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Sipariş gönderiliyor...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="script.js"></script>
+</body>
+</html>
