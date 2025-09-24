@@ -577,8 +577,21 @@ function startStatusCheck() {
     
     // Check status every 5 seconds
     statusCheckInterval = setInterval(() => {
-        log('Status check interval triggered', 'info', true);
+        log('🔄 AUTOMATIC Status check interval triggered', 'info', true);
+        // Add visual indicator that automatic check is running
+        const indicator = document.createElement('div');
+        indicator.id = 'auto-check-indicator';
+        indicator.style.cssText = 'position: fixed; top: 10px; right: 10px; background: #667eea; color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; z-index: 1000;';
+        indicator.textContent = '🔄 Checking status...';
+        document.body.appendChild(indicator);
+        
         updateOrderStatus();
+        
+        // Remove indicator after 1 second
+        setTimeout(() => {
+            const ind = document.getElementById('auto-check-indicator');
+            if (ind) ind.remove();
+        }, 1000);
     }, 5000);
     
     log(`Status checking started for orders: ${currentOrderIds.join(', ')}`, 'info', true);
@@ -675,21 +688,8 @@ function updateStatusDisplay() {
     
     log(`📍 Card visibility - Success: ${successVisible}, Confirmation: ${confirmationVisible}`, 'info', true);
     
-    // CRITICAL CHECK: Make sure we have status data
-    const statusDataKeys = Object.keys(orderStatusData);
-    log(`📊 Status data keys: ${JSON.stringify(statusDataKeys)}`, 'info', true);
-    log(`📊 Current order IDs: ${JSON.stringify(currentOrderIds)}`, 'info', true);
-    
-    if (statusDataKeys.length === 0) {
+    if (Object.keys(orderStatusData).length === 0) {
         log('❌ No order status data available - exiting updateStatusDisplay', 'warn', true);
-        // Try to force an update anyway for testing
-        log('🧪 Forcing manual status update for testing...', 'info', true);
-        try {
-            updateCardStatusItems('alindi');
-            log('🧪 Manual update succeeded', 'info', true);
-        } catch (error) {
-            log(`🧪 Manual update failed: ${error.message}`, 'error', true);
-        }
         return;
     }
     
@@ -707,32 +707,16 @@ function updateStatusDisplay() {
         log(`🔄 Some orders in progress - status: ${overallStatus}`, 'info', true);
     }
     
-    log(`🎯 FINAL Overall status determined: ${overallStatus}`, 'info', true);
-    log(`🎯 About to call updateCardStatusItems with: ${overallStatus}`, 'info', true);
+    log(`🎯 Overall status determined: ${overallStatus}`, 'info', true);
     
-    // CRITICAL: Call the status items update function with error handling
+    // CRITICAL: Call the status items update function
     try {
-        log(`🚀 CALLING updateCardStatusItems(${overallStatus})`, 'info', true);
+        log(`🚀 About to call updateCardStatusItems with status: ${overallStatus}`, 'info', true);
         updateCardStatusItems(overallStatus);
-        log(`✅ updateCardStatusItems completed successfully for ${overallStatus}`, 'info', true);
+        log(`✅ updateCardStatusItems completed successfully`, 'info', true);
     } catch (error) {
-        log(`❌ CRITICAL ERROR in updateCardStatusItems: ${error.message}`, 'error', true);
+        log(`❌ ERROR in updateCardStatusItems: ${error.message}`, 'error', true);
         log(`❌ ERROR stack: ${error.stack}`, 'error', true);
-        
-        // Try a simpler approach
-        try {
-            log(`🔄 Trying simple approach...`, 'info', true);
-            const alindiElement = document.getElementById('status-alindi-confirmation');
-            if (alindiElement) {
-                alindiElement.style.color = '#667eea';
-                alindiElement.style.opacity = '1';
-                log(`🔧 Direct style applied to status-alindi-confirmation`, 'info', true);
-            } else {
-                log(`❌ status-alindi-confirmation element not found`, 'error', true);
-            }
-        } catch (simpleError) {
-            log(`❌ Simple approach also failed: ${simpleError.message}`, 'error', true);
-        }
     }
     
     // Show toast notification for status changes
@@ -759,7 +743,7 @@ function updateStatusDisplay() {
         }
     }
     
-    log(`🏁 updateStatusDisplay completed for status: ${overallStatus}`, 'info', true);
+    log(`🏁 updateStatusDisplay completed`, 'info', true);
 }
 
 // Update status card items
@@ -835,9 +819,17 @@ function updateCardStatusItems(status) {
                 }
                 log(`🔵 Set ALINDI item ${item.id} as active with blue color`, 'info', true);
                 
+                // Add visual flash effect to show automatic change
+                item.style.boxShadow = '0 0 15px #667eea';
+                item.style.transform = 'scale(1.05)';
+                setTimeout(() => {
+                    item.style.boxShadow = '';
+                    item.style.transform = 'scale(1)';
+                }, 2000);
+                
                 // Force a repaint
                 item.offsetHeight;
-                log(`🔄 Forced repaint for ${item.id}`, 'info', true);
+                log(`🔄 Forced repaint for ${item.id} with flash effect`, 'info', true);
             }
         });
         
@@ -871,6 +863,14 @@ function updateCardStatusItems(status) {
                     icon.style.fontSize = '1.2em';
                 }
                 log(`🔵 Set HAZIRLANDI item ${item.id} as active with blue color`, 'info', true);
+                
+                // Add visual flash effect to show automatic change
+                item.style.boxShadow = '0 0 15px #667eea';
+                item.style.transform = 'scale(1.05)';
+                setTimeout(() => {
+                    item.style.boxShadow = '';
+                    item.style.transform = 'scale(1)';
+                }, 2000);
             }
         });
     } else {
