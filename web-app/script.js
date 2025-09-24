@@ -13,6 +13,7 @@ let supabaseInitialized = false;
 let selectedDrinks = []; // Array for multiple drink orders
 let currentOrderIds = []; // Array for order tracking
 let statusCheckInterval = null;
+let previousOrderStatus = {}; // Track previous status for change detection
 
 // Safe logging function
 const log = (message, type = 'log', force = false) => {
@@ -99,6 +100,155 @@ function getToastIcon(type) {
         'info': 'ℹ️'
     };
     return icons[type] || 'ℹ️';
+}
+
+// CYD Status Alert Popup - Big prominent alert for status changes
+function showCydAlert(message, status, duration = 6000) {
+    log(`🚨 CYD Alert: ${message} (${status})`, 'info', true);
+    
+    // Remove existing CYD alerts
+    const existingAlerts = document.querySelectorAll('.cyd-alert');
+    existingAlerts.forEach(alert => alert.remove());
+    
+    // Create big popup alert
+    const alert = document.createElement('div');
+    alert.className = 'cyd-alert';
+    
+    const statusIcons = {
+        'alindi': '👨‍🍳',
+        'hazirlandi': '🍹',
+        'completed': '✅'
+    };
+    
+    const statusColors = {
+        'alindi': '#667eea',
+        'hazirlandi': '#28a745',
+        'completed': '#28a745'
+    };
+    
+    alert.innerHTML = `
+        <div class="cyd-alert-content">
+            <div class="cyd-alert-icon">${statusIcons[status] || '📱'}</div>
+            <div class="cyd-alert-title">CYD Güncellemesi</div>
+            <div class="cyd-alert-message">${message}</div>
+            <div class="cyd-alert-status">Status: ${status.toUpperCase()}</div>
+        </div>
+    `;
+    
+    // Styling
+    alert.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border: 3px solid ${statusColors[status] || '#667eea'};
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        z-index: 10000;
+        text-align: center;
+        min-width: 300px;
+        animation: cydAlertSlideIn 0.5s ease-out;
+    `;
+    
+    // Style the content
+    const content = alert.querySelector('.cyd-alert-content');
+    content.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 15px;
+    `;
+    
+    const icon = alert.querySelector('.cyd-alert-icon');
+    icon.style.cssText = `
+        font-size: 48px;
+        animation: pulse 2s infinite;
+    `;
+    
+    const title = alert.querySelector('.cyd-alert-title');
+    title.style.cssText = `
+        font-size: 24px;
+        font-weight: bold;
+        color: ${statusColors[status] || '#667eea'};
+        margin: 0;
+    `;
+    
+    const messageEl = alert.querySelector('.cyd-alert-message');
+    messageEl.style.cssText = `
+        font-size: 18px;
+        color: #333;
+        margin: 0;
+    `;
+    
+    const statusEl = alert.querySelector('.cyd-alert-status');
+    statusEl.style.cssText = `
+        font-size: 16px;
+        font-weight: bold;
+        color: ${statusColors[status] || '#667eea'};
+        background: rgba(102, 126, 234, 0.1);
+        padding: 8px 16px;
+        border-radius: 8px;
+        margin: 0;
+    `;
+    
+    // Add animations
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes cydAlertSlideIn {
+            from { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
+            to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .cyd-alert {
+            animation: cydAlertSlideIn 0.5s ease-out;
+        }
+    `;
+    if (!document.querySelector('style[data-cyd-alert]')) {
+        style.setAttribute('data-cyd-alert', '');
+        document.head.appendChild(style);
+    }
+    
+    // Add to body
+    document.body.appendChild(alert);
+    
+    // Play notification sound if available
+    try {
+        if ('vibrate' in navigator) {
+            navigator.vibrate([200, 100, 200, 100, 200]);
+        }
+        // Try to play a beep sound
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.frequency.value = status === 'hazirlandi' ? 800 : 600;
+        gainNode.gain.value = 0.1;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (e) {
+        log('Could not play notification sound', 'warn');
+    }
+    
+    // Click to dismiss
+    alert.addEventListener('click', () => {
+        alert.remove();
+    });
+    
+    // Auto remove after duration
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.style.animation = 'cydAlertSlideIn 0.3s ease-in reverse';
+            setTimeout(() => alert.remove(), 300);
+        }
+    }, duration);
+    
+    log(`🚨 CYD Alert displayed: ${message}`, 'info', true);
 }
 
 // Show/hide loading overlay
@@ -645,6 +795,30 @@ async function checkOrderStatusFromDatabase() {
     
     log(`Raw status data from DB: ${JSON.stringify(data)}`, 'info', true);
     
+    // Check for status changes and show CYD alerts
+    data.forEach(order => {
+        const currentStatus = order.status;
+        const previousStatus = previousOrderStatus[order.id];
+        
+        // Detect status change
+        if (previousStatus && previousStatus !== currentStatus) {
+            log(`🚨 STATUS CHANGE DETECTED for order ${order.id}: ${previousStatus} → ${currentStatus}`, 'info', true);
+            
+            // Show CYD Alert for status change
+            const statusMessages = {
+                'alindi': 'Siparişiniz mutfakta alındı! 👨‍🍳',
+                'hazirlandi': 'Siparişiniz hazırlandı! 🍹',
+                'completed': 'Siparişiniz tamamlandı! ✅'
+            };
+            
+            const message = statusMessages[currentStatus] || `Sipariş durumu: ${currentStatus}`;
+            showCydAlert(message, currentStatus);
+        }
+        
+        // Store current status for next comparison
+        previousOrderStatus[order.id] = currentStatus;
+    });
+    
     // Update status data
     orderStatusData = {};
     data.forEach(order => {
@@ -666,6 +840,26 @@ function simulateStatusProgression() {
     } else if (elapsed > 10000) { // 10 seconds
         simulatedStatus = 'alindi';
     }
+    
+    // Check for status changes in test mode and show CYD alerts
+    currentOrderIds.forEach(id => {
+        const previousStatus = previousOrderStatus[id];
+        
+        if (previousStatus && previousStatus !== simulatedStatus && simulatedStatus !== 'new') {
+            log(`🚨 TEST MODE STATUS CHANGE for order ${id}: ${previousStatus} → ${simulatedStatus}`, 'info', true);
+            
+            const statusMessages = {
+                'alindi': 'TEST: Siparişiniz mutfakta alındı! 👨‍🍳',
+                'hazirlandi': 'TEST: Siparişiniz hazırlandı! 🍹'
+            };
+            
+            const message = statusMessages[simulatedStatus] || `TEST: Sipariş durumu: ${simulatedStatus}`;
+            showCydAlert(message, simulatedStatus);
+        }
+        
+        // Store current status for next comparison
+        previousOrderStatus[id] = simulatedStatus;
+    });
     
     // Update all orders with same status for simplicity
     orderStatusData = {};
@@ -1285,6 +1479,17 @@ async function initializeApp() {
                     log(`❌ Element ${index} not found`, 'warn', true);
                 }
             });
+        };
+        
+        // CYD ALERT TEST FUNCTION
+        window.testCydAlert = function(status = 'alindi') {
+            log(`🧪 Manual CYD Alert test: ${status}`, 'info', true);
+            const messages = {
+                'alindi': 'Siparişiniz mutfakta alındı! 👨‍🍳',
+                'hazirlandi': 'Siparişiniz hazırlandı! 🍹',
+                'completed': 'Siparişiniz tamamlandı! ✅'
+            };
+            showCydAlert(messages[status] || 'Test alert', status);
         };
         
         // TEST: Add a manual test function to the window for debugging
