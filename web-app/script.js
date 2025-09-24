@@ -386,22 +386,37 @@ function showCard(cardId) {
 function handleUserInfoSubmit(e) {
     e.preventDefault();
     
-    const name = document.getElementById('customer-name').value.trim();
-    const department = document.getElementById('customer-department').value.trim();
-    
-    if (!name || !department) {
-        showToast('Lütfen tüm alanları doldurun', 'error');
-        return;
+    try {
+        const nameInput = document.getElementById('customer-name');
+        const departmentInput = document.getElementById('customer-department');
+        
+        if (!nameInput || !departmentInput) {
+            log('Form inputs not found', 'error');
+            showToast('Form hatası - sayfa yenilenecek', 'error');
+            setTimeout(() => location.reload(), 2000);
+            return;
+        }
+        
+        const name = nameInput.value.trim();
+        const department = departmentInput.value.trim();
+        
+        if (!name || !department) {
+            showToast('Lütfen tüm alanları doldurun', 'error');
+            return;
+        }
+        
+        // Store user info
+        window.currentUser = { customerName: name, department: department };
+        
+        log(`User info saved: ${name} - ${department}`);
+        showToast('Bilgiler kaydedildi', 'success');
+        
+        // Move to drink selection
+        showCard('drink-selection');
+    } catch (error) {
+        log(`Error in handleUserInfoSubmit: ${error.message}`, 'error');
+        showToast('Form işleminde hata oluştu', 'error');
     }
-    
-    // Store user info
-    window.currentUser = { customerName: name, department: department };
-    
-    log(`User info saved: ${name} - ${department}`);
-    showToast('Bilgiler kaydedildi', 'success');
-    
-    // Move to drink selection
-    showCard('drink-selection');
 }
 
 // Drink selection functionality
@@ -574,11 +589,17 @@ async function initializeApp() {
             log('🧪 Running in TEST MODE', 'info', true);
         }
         
-        // Setup event listeners
+        // Setup event listeners with error handling
         setupEventListeners();
         
-        // Setup drink selection
-        setupDrinkSelection();
+        // Setup drink selection with error handling
+        setTimeout(() => {
+            try {
+                setupDrinkSelection();
+            } catch (error) {
+                log(`Error setting up drink selection: ${error.message}`, 'error');
+            }
+        }, 500);
         
         // Show initial card
         showCard('user-info');
@@ -611,6 +632,13 @@ async function initializeApp() {
     } catch (error) {
         log(`❌ App initialization failed: ${error.message}`, 'error', true);
         showToast(`Sistem başlatılamadı: ${error.message}`, 'error');
+        
+        // Try to continue with basic functionality
+        try {
+            showCard('user-info');
+        } catch (e) {
+            log('Even basic card navigation failed', 'error');
+        }
     } finally {
         showLoading(false);
     }
@@ -618,13 +646,146 @@ async function initializeApp() {
 
 // Setup event listeners
 function setupEventListeners() {
-    // User info form
-    const userForm = document.getElementById('user-form');
-    if (userForm) {
-        userForm.addEventListener('submit', handleUserInfoSubmit);
+    try {
+        // User info form
+        const userForm = document.getElementById('user-form');
+        if (userForm) {
+            userForm.addEventListener('submit', handleUserInfoSubmit);
+            log('User form event listener added');
+        } else {
+            log('User form not found - page may still be loading');
+        }
+        
+        // Retry setup after a delay if elements are missing
+        setTimeout(() => {
+            if (!document.getElementById('user-form')) {
+                log('Retrying event listener setup...');
+                setupEventListeners();
+            }
+        }, 1000);
+        
+    } catch (error) {
+        log(`Error setting up event listeners: ${error.message}`, 'error');
     }
-    
-    log('Event listeners set up');
+}
+
+// Drink selection functionality  
+function setupDrinkSelection() {
+    try {
+        const drinkOptions = document.querySelectorAll('.drink-option');
+        if (drinkOptions.length > 0) {
+            drinkOptions.forEach(option => {
+                option.addEventListener('click', () => toggleDrinkSelection(option));
+            });
+            log(`Added event listeners to ${drinkOptions.length} drink options`);
+        } else {
+            log('No drink options found - will retry later');
+        }
+        
+        // Order button
+        const orderBtn = document.getElementById('place-order-btn');
+        if (orderBtn) {
+            orderBtn.addEventListener('click', handlePlaceOrder);
+            log('Order button event listener added');
+        } else {
+            log('Order button not found - will retry later');
+        }
+    } catch (error) {
+        log(`Error setting up drink selection: ${error.message}`, 'error');
+    }
+}
+
+function toggleDrinkSelection(option) {
+    try {
+        const drinkName = option.dataset.drink;
+        const quantityElement = option.querySelector('.quantity');
+        let currentQuantity = parseInt(quantityElement.textContent) || 0;
+        
+        if (option.classList.contains('selected')) {
+            // Decrease quantity or deselect
+            currentQuantity--;
+            if (currentQuantity <= 0) {
+                option.classList.remove('selected');
+                quantityElement.textContent = '0';
+                // Remove from selected drinks
+                selectedDrinks = selectedDrinks.filter(drink => drink.name !== drinkName);
+            } else {
+                quantityElement.textContent = currentQuantity;
+                // Update quantity in selected drinks
+                const drink = selectedDrinks.find(d => d.name === drinkName);
+                if (drink) drink.quantity = currentQuantity;
+            }
+        } else {
+            // Select and set quantity to 1
+            currentQuantity = 1;
+            option.classList.add('selected');
+            quantityElement.textContent = currentQuantity;
+            selectedDrinks.push({ name: drinkName, quantity: currentQuantity });
+        }
+        
+        updateOrderButton();
+    } catch (error) {
+        log(`Error toggling drink selection: ${error.message}`, 'error');
+    }
+}
+
+function updateOrderButton() {
+    try {
+        const orderBtn = document.getElementById('place-order-btn');
+        const totalItems = selectedDrinks.reduce((sum, drink) => sum + drink.quantity, 0);
+        
+        if (orderBtn) {
+            if (totalItems > 0) {
+                orderBtn.disabled = false;
+                orderBtn.textContent = `Sipariş Ver (${totalItems} adet)`;
+            } else {
+                orderBtn.disabled = true;
+                orderBtn.textContent = 'İçecek Seçin';
+            }
+        }
+    } catch (error) {
+        log(`Error updating order button: ${error.message}`, 'error');
+    }
+}
+
+async function handlePlaceOrder() {
+    try {
+        if (selectedDrinks.length === 0) {
+            showToast('Lütfen en az bir içecek seçin', 'error');
+            return;
+        }
+        
+        if (!window.currentUser) {
+            showToast('Kullanıcı bilgileri bulunamadı', 'error');
+            return;
+        }
+        
+        showLoading(true);
+        
+        if (TEST_MODE) {
+            // Test mode - simulate order creation
+            currentOrderIds = [Math.floor(Math.random() * 1000), Math.floor(Math.random() * 1000)];
+            window.orderCreatedTime = Date.now();
+        } else {
+            // Production mode - create orders in Supabase
+            await createOrdersInSupabase();
+        }
+        
+        // Show order confirmation
+        updateOrderSummary();
+        showCard('order-confirmation');
+        
+        // Start automatic status checking for CYD updates
+        startStatusCheck();
+        
+        showToast('Sipariş başarıyla gönderildi!', 'success');
+        
+    } catch (error) {
+        log(`Order creation error: ${error.message}`, 'error');
+        showToast(`Sipariş oluşturulurken hata: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
 }
 
 // Initialize when DOM is ready
