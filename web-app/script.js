@@ -665,7 +665,7 @@ function simulateStatusProgression() {
 
 // Update status display on the page
 function updateStatusDisplay() {
-    log(`updateStatusDisplay called with orderStatusData: ${JSON.stringify(orderStatusData)}`, 'info', true);
+    log(`🔄 updateStatusDisplay called with orderStatusData: ${JSON.stringify(orderStatusData)}`, 'info', true);
     
     // Debug: Check which cards are currently visible
     const successCard = document.getElementById('success-card');
@@ -673,30 +673,38 @@ function updateStatusDisplay() {
     const successVisible = successCard && successCard.style.display !== 'none';
     const confirmationVisible = confirmationCard && confirmationCard.style.display !== 'none';
     
-    log(`Card visibility - Success: ${successVisible}, Confirmation: ${confirmationVisible}`, 'info', true);
+    log(`📍 Card visibility - Success: ${successVisible}, Confirmation: ${confirmationVisible}`, 'info', true);
     
     if (Object.keys(orderStatusData).length === 0) {
-        log('No order status data available - exiting updateStatusDisplay', 'warn', true);
+        log('❌ No order status data available - exiting updateStatusDisplay', 'warn', true);
         return;
     }
     
     // Determine overall status (most advanced status among all orders)
     const statuses = Object.values(orderStatusData);
-    log(`All statuses: ${JSON.stringify(statuses)}`, 'info', true);
+    log(`📊 All statuses: ${JSON.stringify(statuses)}`, 'info', true);
     
     let overallStatus = 'new';
     
     if (statuses.every(status => status === 'hazirlandi')) {
         overallStatus = 'hazirlandi';
+        log(`✅ All orders completed - status: ${overallStatus}`, 'info', true);
     } else if (statuses.some(status => status === 'alindi' || status === 'hazirlandi')) {
         overallStatus = 'alindi';
+        log(`🔄 Some orders in progress - status: ${overallStatus}`, 'info', true);
     }
     
-    log(`Overall status determined: ${overallStatus}`, 'info', true);
+    log(`🎯 Overall status determined: ${overallStatus}`, 'info', true);
     
-    // Update card status items (this is the main visual indicator)
-    log('Calling updateCardStatusItems...', 'info', true);
-    updateCardStatusItems(overallStatus);
+    // CRITICAL: Call the status items update function
+    try {
+        log(`🚀 About to call updateCardStatusItems with status: ${overallStatus}`, 'info', true);
+        updateCardStatusItems(overallStatus);
+        log(`✅ updateCardStatusItems completed successfully`, 'info', true);
+    } catch (error) {
+        log(`❌ ERROR in updateCardStatusItems: ${error.message}`, 'error', true);
+        log(`❌ ERROR stack: ${error.stack}`, 'error', true);
+    }
     
     // Show toast notification for status changes
     const statusMessages = {
@@ -707,11 +715,12 @@ function updateStatusDisplay() {
     
     if (overallStatus !== 'new') {
         showToast(statusMessages[overallStatus], 'info');
+        log(`📢 Toast shown: ${statusMessages[overallStatus]}`, 'info', true);
     }
     
     // Stop checking if all orders are completed
     if (overallStatus === 'hazirlandi') {
-        log('All orders completed, stopping status check', 'info', true);
+        log('🏁 All orders completed, stopping status check', 'info', true);
         stopStatusCheck();
         showToast('Siparişiniz hazır! ✅', 'success');
         
@@ -720,6 +729,8 @@ function updateStatusDisplay() {
             navigator.vibrate([200, 100, 200]);
         }
     }
+    
+    log(`🏁 updateStatusDisplay completed`, 'info', true);
 }
 
 // Update status card items
@@ -1160,6 +1171,18 @@ async function initializeApp() {
         const mode = TEST_MODE ? 'Test Mode' : 'Production';
         log(`✅ App initialized successfully (${mode})`, 'log', true);
         showToast(`Sistem hazır (${mode})`, 'success');
+        
+        // TEST: Add a manual test function to the window for debugging
+        window.testStatusUpdate = function(status) {
+            log(`🧪 Manual test: setting status to ${status}`, 'info', true);
+            try {
+                updateCardStatusItems(status);
+            } catch (error) {
+                log(`❌ Manual test error: ${error.message}`, 'error', true);
+            }
+        };
+        
+        log(`🧪 Added window.testStatusUpdate() function for manual testing`, 'info', true);
         
     } catch (error) {
         log(`❌ App initialization failed: ${error.message}`, 'error', true);
