@@ -714,6 +714,41 @@ function updateStatusDisplay() {
         log(`🚀 About to call updateCardStatusItems with status: ${overallStatus}`, 'info', true);
         updateCardStatusItems(overallStatus);
         log(`✅ updateCardStatusItems completed successfully`, 'info', true);
+        
+        // FORCE IMMEDIATE VISUAL UPDATE - Emergency fix
+        log(`🚨 FORCE UPDATING ALL BLUE ELEMENTS`, 'info', true);
+        const allStatusElements = document.querySelectorAll('.status-item, #status-alindi-confirmation, #status-hazirlandi-confirmation');
+        allStatusElements.forEach(element => {
+            if (element && (element.id.includes('alindi') || element.id.includes('hazirlandi'))) {
+                element.style.color = '#667eea !important';
+                element.style.fontWeight = 'bold';
+                element.style.opacity = '1';
+                element.classList.add('active');
+                
+                // Force the icon color too
+                const icon = element.querySelector('i');
+                if (icon) {
+                    icon.style.color = '#667eea';
+                    icon.style.fontSize = '1.2em';
+                }
+                
+                // Flash effect to show change
+                element.style.backgroundColor = '#667eea';
+                element.style.color = 'white';
+                element.style.padding = '5px';
+                element.style.borderRadius = '5px';
+                
+                setTimeout(() => {
+                    element.style.backgroundColor = '';
+                    element.style.color = '#667eea';
+                    element.style.padding = '';
+                    element.style.borderRadius = '';
+                }, 3000);
+                
+                log(`🔵 FORCE UPDATED ${element.id} to blue`, 'info', true);
+            }
+        });
+        
     } catch (error) {
         log(`❌ ERROR in updateCardStatusItems: ${error.message}`, 'error', true);
         log(`❌ ERROR stack: ${error.stack}`, 'error', true);
@@ -1200,6 +1235,57 @@ async function initializeApp() {
         const mode = TEST_MODE ? 'Test Mode' : 'Production';
         log(`✅ App initialized successfully (${mode})`, 'log', true);
         showToast(`Sistem hazır (${mode})`, 'success');
+        
+        // FORCE BLUE UPDATE FUNCTION - Emergency visual fix
+        window.forceBlueUpdate = function() {
+            log('🚨 MANUAL FORCE BLUE UPDATE TRIGGERED', 'info', true);
+            
+            const elements = [
+                document.getElementById('status-alindi-confirmation'),
+                document.getElementById('status-hazirlandi-confirmation'),
+                document.querySelector('.status-item[data-status="alindi"]'),
+                document.querySelector('.status-item[data-status="hazirlandi"]')
+            ];
+            
+            elements.forEach((element, index) => {
+                if (element) {
+                    log(`🔧 Forcing blue on element ${index}: ${element.id || element.className}`, 'info', true);
+                    
+                    // Multiple approaches to force the color
+                    element.style.setProperty('color', '#667eea', 'important');
+                    element.style.color = '#667eea';
+                    element.style.fontWeight = 'bold';
+                    element.style.opacity = '1';
+                    element.classList.add('active');
+                    
+                    // Flash effect
+                    element.style.backgroundColor = '#667eea';
+                    element.style.color = 'white';
+                    element.style.padding = '8px';
+                    element.style.borderRadius = '8px';
+                    element.style.transform = 'scale(1.1)';
+                    
+                    setTimeout(() => {
+                        element.style.backgroundColor = 'transparent';
+                        element.style.color = '#667eea';
+                        element.style.padding = '';
+                        element.style.borderRadius = '';
+                        element.style.transform = 'scale(1)';
+                    }, 2000);
+                    
+                    // Also update the icon
+                    const icon = element.querySelector('i');
+                    if (icon) {
+                        icon.style.setProperty('color', '#667eea', 'important');
+                        icon.style.fontSize = '1.3em';
+                    }
+                    
+                    log(`✅ Force updated element ${index}`, 'info', true);
+                } else {
+                    log(`❌ Element ${index} not found`, 'warn', true);
+                }
+            });
+        };
         
         // TEST: Add a manual test function to the window for debugging
         window.testStatusUpdate = function(status) {
