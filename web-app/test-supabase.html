@@ -1,0 +1,94 @@
+// Test Supabase Connection and Data
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Test</h1>
+    <button onclick="testConnection()">Test Connection</button>
+    <button onclick="fetchOrders()">Fetch Orders</button>
+    <button onclick="updateOrderStatus()">Update Test Order Status</button>
+    <div id="result"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        async function testConnection() {
+            try {
+                const { data, error } = await supabase.from('drink_orders').select('count', { count: 'exact', head: true });
+                if (error) throw error;
+                document.getElementById('result').innerHTML = '<p style="color: green;">Connection successful!</p>';
+            } catch (error) {
+                document.getElementById('result').innerHTML = `<p style="color: red;">Connection failed: ${error.message}</p>`;
+            }
+        }
+        
+        async function fetchOrders() {
+            try {
+                const { data, error } = await supabase
+                    .from('drink_orders')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+                
+                if (error) throw error;
+                
+                document.getElementById('result').innerHTML = `
+                    <h3>Recent Orders:</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('result').innerHTML = `<p style="color: red;">Fetch failed: ${error.message}</p>`;
+            }
+        }
+        
+        async function updateOrderStatus() {
+            try {
+                // First get the most recent order
+                const { data: orders, error: fetchError } = await supabase
+                    .from('drink_orders')
+                    .select('id, status')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                
+                if (fetchError) throw fetchError;
+                
+                if (orders && orders.length > 0) {
+                    const orderId = orders[0].id;
+                    const currentStatus = orders[0].status;
+                    
+                    // Cycle through statuses: new -> alindi -> hazirlandi -> new
+                    let newStatus = 'alindi';
+                    if (currentStatus === 'alindi') {
+                        newStatus = 'hazirlandi';
+                    } else if (currentStatus === 'hazirlandi') {
+                        newStatus = 'new';
+                    }
+                    
+                    const { data, error } = await supabase
+                        .from('drink_orders')
+                        .update({ status: newStatus })
+                        .eq('id', orderId)
+                        .select();
+                    
+                    if (error) throw error;
+                    
+                    document.getElementById('result').innerHTML = `
+                        <p style="color: green;">Order ${orderId} updated from "${currentStatus}" to "${newStatus}"</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    document.getElementById('result').innerHTML = '<p>No orders found to update</p>';
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = `<p style="color: red;">Update failed: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

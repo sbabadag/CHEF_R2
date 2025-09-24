@@ -402,12 +402,13 @@ async function confirmOrder() {
             await createOrdersInSupabase();
         }
         
-        // Show success card
-        showCard('success-card');
-        updateSuccessCardInfo();
+        // Stay on confirmation card but show status section
+        showOrderStatusSection();
         
         // Start status checking
         startStatusCheck();
+        
+        showToast('Sipariş başarıyla gönderildi!', 'success');
         
     } catch (error) {
         log(`Order confirmation error: ${error.message}`, 'error');
@@ -475,6 +476,23 @@ async function simulateOrderCreation() {
     showToast('Test siparişi oluşturuldu!', 'success');
 }
 
+// Show order status section in confirmation card
+function showOrderStatusSection() {
+    const statusSection = document.getElementById('order-status-section');
+    const confirmButton = document.getElementById('confirm-order');
+    const backButton = document.getElementById('back-to-drinks');
+    const newOrderButton = document.getElementById('place-new-order-confirmation');
+    
+    if (statusSection) {
+        statusSection.style.display = 'block';
+    }
+    
+    // Hide confirmation buttons, show new order button
+    if (confirmButton) confirmButton.style.display = 'none';
+    if (backButton) backButton.style.display = 'none';
+    if (newOrderButton) newOrderButton.style.display = 'inline-flex';
+}
+
 // Update success card with order info
 function updateSuccessCardInfo() {
     const orderSummary = document.getElementById('order-summary');
@@ -500,7 +518,6 @@ function updateSuccessCardInfo() {
         </div>
         <div class="order-footer">
             <p><strong>Toplam: ${totalItems} adet içecek</strong></p>
-            <p class="order-status">Durum: <span id="status-text">Sipariş Alındı</span></p>
         </div>
     `;
     
@@ -512,16 +529,24 @@ function updateSuccessCardInfo() {
 function startStatusCheck() {
     log('Starting real-time status check', 'info', true);
     
+    if (currentOrderIds.length === 0) {
+        log('No order IDs to track - cannot start status check', 'warn', true);
+        return;
+    }
+    
     // Clear any existing interval
     if (statusCheckInterval) {
+        log('Clearing existing status check interval', 'info', true);
         clearInterval(statusCheckInterval);
     }
     
     // Initial status update
+    log('Running initial status update', 'info', true);
     updateOrderStatus();
     
     // Check status every 5 seconds
     statusCheckInterval = setInterval(() => {
+        log('Status check interval triggered', 'info', true);
         updateOrderStatus();
     }, 5000);
     
@@ -535,15 +560,20 @@ async function updateOrderStatus() {
         return;
     }
     
+    log(`Updating order status for: ${JSON.stringify(currentOrderIds)}`, 'info', true);
+    
     try {
         if (TEST_MODE) {
+            log('Running in TEST_MODE - simulating status', 'info', true);
             // Test mode - simulate status progression
             simulateStatusProgression();
         } else {
+            log('Running in PRODUCTION mode - checking database', 'info', true);
             // Production mode - check actual status from database
             await checkOrderStatusFromDatabase();
         }
         
+        log('Calling updateStatusDisplay()', 'info', true);
         updateStatusDisplay();
     } catch (error) {
         log(`Status check error: ${error.message}`, 'error', true);
@@ -557,14 +587,19 @@ async function checkOrderStatusFromDatabase() {
         return;
     }
     
+    log(`Checking status for order IDs: ${JSON.stringify(currentOrderIds)}`, 'info', true);
+    
     const { data, error } = await supabase
         .from('drink_orders')
         .select('id, status')
         .in('id', currentOrderIds);
     
     if (error) {
+        log(`Status check error: ${error.message}`, 'error', true);
         throw new Error(`Status check failed: ${error.message}`);
     }
+    
+    log(`Raw status data from DB: ${JSON.stringify(data)}`, 'info', true);
     
     // Update status data
     orderStatusData = {};
@@ -599,10 +634,17 @@ function simulateStatusProgression() {
 
 // Update status display on the page
 function updateStatusDisplay() {
-    if (Object.keys(orderStatusData).length === 0) return;
+    log(`updateStatusDisplay called with orderStatusData: ${JSON.stringify(orderStatusData)}`, 'info', true);
+    
+    if (Object.keys(orderStatusData).length === 0) {
+        log('No order status data available - exiting updateStatusDisplay', 'warn', true);
+        return;
+    }
     
     // Determine overall status (most advanced status among all orders)
     const statuses = Object.values(orderStatusData);
+    log(`All statuses: ${JSON.stringify(statuses)}`, 'info', true);
+    
     let overallStatus = 'new';
     
     if (statuses.every(status => status === 'hazirlandi')) {
@@ -611,21 +653,22 @@ function updateStatusDisplay() {
         overallStatus = 'alindi';
     }
     
-    log(`Overall status: ${overallStatus}`, 'info', true);
+    log(`Overall status determined: ${overallStatus}`, 'info', true);
     
-    // Update status text
-    const statusText = document.getElementById('status-text');
-    if (statusText) {
-        const statusMessages = {
-            'new': 'Yeni Sipariş',
-            'alindi': 'Sipariş Alındı - Hazırlanıyor',
-            'hazirlandi': 'Sipariş Hazır!'
-        };
-        statusText.textContent = statusMessages[overallStatus] || 'Bilinmiyor';
-    }
-    
-    // Update card status items
+    // Update card status items (this is the main visual indicator)
+    log('Calling updateCardStatusItems...', 'info', true);
     updateCardStatusItems(overallStatus);
+    
+    // Show toast notification for status changes
+    const statusMessages = {
+        'new': 'Sipariş alındı',
+        'alindi': 'Sipariş hazırlanıyor',
+        'hazirlandi': 'Sipariş hazır!'
+    };
+    
+    if (overallStatus !== 'new') {
+        showToast(statusMessages[overallStatus], 'info');
+    }
     
     // Stop checking if all orders are completed
     if (overallStatus === 'hazirlandi') {
@@ -642,25 +685,53 @@ function updateStatusDisplay() {
 
 // Update status card items
 function updateCardStatusItems(status) {
-    const statusItems = document.querySelectorAll('.status-item');
-    statusItems.forEach(item => {
-        item.classList.remove('active', 'completed');
+    log(`updateCardStatusItems called with status: ${status}`, 'info', true);
+    
+    // Update both success card and confirmation card status items
+    const statusSelectors = [
+        // Success card elements
+        { new: '#status-new', alindi: '#status-alindi', hazirlandi: '#status-hazirlandi' },
+        // Confirmation card elements  
+        { new: '#status-new-confirmation', alindi: '#status-alindi-confirmation', hazirlandi: '#status-hazirlandi-confirmation' }
+    ];
+    
+    statusSelectors.forEach(selectors => {
+        const statusNew = document.querySelector(selectors.new);
+        const statusAlindi = document.querySelector(selectors.alindi);
+        const statusHazirlandi = document.querySelector(selectors.hazirlandi);
+        
+        // Reset all items
+        [statusNew, statusAlindi, statusHazirlandi].forEach(item => {
+            if (item) {
+                item.classList.remove('active', 'completed');
+            }
+        });
+        
+        if (status === 'new') {
+            log('Setting status-new as active', 'info', true);
+            statusNew?.classList.add('active');
+        } else if (status === 'alindi') {
+            log('Setting status-new as completed and status-alindi as active', 'info', true);
+            statusNew?.classList.add('completed');
+            statusAlindi?.classList.add('active');
+        } else if (status === 'hazirlandi') {
+            log('Setting status-new and status-alindi as completed, status-hazirlandi as active', 'info', true);
+            statusNew?.classList.add('completed');
+            statusAlindi?.classList.add('completed');
+            statusHazirlandi?.classList.add('active');
+        }
     });
     
-    // Update individual status items
-    const statusNew = document.getElementById('status-new');
-    const statusAlindi = document.getElementById('status-alindi');
-    const statusHazirlandi = document.getElementById('status-hazirlandi');
-    
-    if (status === 'new') {
-        statusNew?.classList.add('active');
-    } else if (status === 'alindi') {
-        statusNew?.classList.add('completed');
-        statusAlindi?.classList.add('active');
-    } else if (status === 'hazirlandi') {
-        statusNew?.classList.add('completed');
-        statusAlindi?.classList.add('completed');
-        statusHazirlandi?.classList.add('active');
+    // Update status text in confirmation card
+    const statusTextConfirmation = document.getElementById('status-text-confirmation');
+    if (statusTextConfirmation) {
+        const statusMessages = {
+            'new': 'Sipariş alındı, hazırlanıyor...',
+            'alindi': 'Aşçı siparişinizi aldı, hazırlanıyor...',
+            'hazirlandi': 'Siparişiniz hazır! Teslim alabilirsiniz.'
+        };
+        statusTextConfirmation.textContent = statusMessages[status] || 'Durum güncelleniyor...';
+        log(`Updated confirmation status text: ${statusMessages[status]}`, 'info', true);
     }
 }
 
@@ -774,20 +845,53 @@ function resetApp() {
     // Stop status checking
     stopStatusCheck();
     
-    // Reset drink quantities
-    const quantityDisplays = document.querySelectorAll('.quantity-display');
-    quantityDisplays.forEach(display => display.textContent = '0');
+    // Reset drink quantities and selections
+    const quantitySpans = document.querySelectorAll('.quantity');
+    quantitySpans.forEach(span => span.textContent = '0');
     
-    // Remove selected classes
-    const selectedDrinks = document.querySelectorAll('.drink-option.selected');
-    selectedDrinks.forEach(option => option.classList.remove('selected'));
+    const quantityControls = document.querySelectorAll('.quantity-controls');
+    quantityControls.forEach(control => control.style.display = 'none');
+    
+    // Remove selected classes from drink options
+    const selectedDrinkOptions = document.querySelectorAll('.drink-option.selected');
+    selectedDrinkOptions.forEach(option => option.classList.remove('selected'));
     
     // Reset form
     const userForm = document.getElementById('user-form');
-    if (userForm) userForm.reset();
+    if (userForm) {
+        userForm.reset();
+        log('User form reset', 'info', true);
+    }
+    
+    // Clear summary
+    const summaryDiv = document.getElementById('selected-drinks-summary');
+    if (summaryDiv) {
+        summaryDiv.style.display = 'none';
+        summaryDiv.innerHTML = '<p>Henüz içecek seçilmedi</p>';
+    }
+    
+    // Hide continue button
+    const continueBtn = document.getElementById('continue-to-confirmation');
+    if (continueBtn) {
+        continueBtn.style.display = 'none';
+        continueBtn.disabled = true;
+    }
+    
+    // Reset confirmation card to initial state
+    const statusSection = document.getElementById('order-status-section');
+    const confirmButton = document.getElementById('confirm-order');
+    const backButton = document.getElementById('back-to-drinks');
+    const newOrderButton = document.getElementById('place-new-order-confirmation');
+    
+    if (statusSection) statusSection.style.display = 'none';
+    if (confirmButton) confirmButton.style.display = 'inline-flex';
+    if (backButton) backButton.style.display = 'inline-flex';
+    if (newOrderButton) newOrderButton.style.display = 'none';
     
     // Update summary
     updateSelectedDrinksSummary();
+    
+    log('App reset completed', 'info', true);
     
     // Go back to first card
     showCard('user-info-card');
@@ -862,6 +966,28 @@ function setupEventListeners() {
         log('Found back-to-user-info button', 'info', true);
         backToUserInfo.addEventListener('click', () => {
             log('Back to user info clicked', 'info', true);
+            showCard('user-info-card');
+        });
+    }
+    
+    // New order button (place-new-order)
+    const newOrderBtn = document.getElementById('place-new-order');
+    if (newOrderBtn) {
+        log('Found place-new-order button', 'info', true);
+        newOrderBtn.addEventListener('click', () => {
+            log('New order button clicked, resetting app', 'info', true);
+            resetApp();
+            showCard('user-info-card');
+        });
+    }
+    
+    // New order button in confirmation card (place-new-order-confirmation)
+    const newOrderConfirmationBtn = document.getElementById('place-new-order-confirmation');
+    if (newOrderConfirmationBtn) {
+        log('Found place-new-order-confirmation button', 'info', true);
+        newOrderConfirmationBtn.addEventListener('click', () => {
+            log('New order confirmation button clicked, resetting app', 'info', true);
+            resetApp();
             showCard('user-info-card');
         });
     }

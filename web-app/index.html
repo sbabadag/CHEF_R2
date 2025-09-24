@@ -216,6 +216,30 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Order Status Tracking (only shown after order is confirmed) -->
+                    <div class="order-status-section" id="order-status-section" style="display: none;">
+                        <hr style="margin: 1.5rem 0;">
+                        <h3 style="text-align: center; margin-bottom: 1rem;">Sipariş Durumu</h3>
+                        <div class="order-status">
+                            <div class="status-item active" id="status-new-confirmation">
+                                <i class="fas fa-paper-plane"></i>
+                                <span>Yeni Sipariş</span>
+                            </div>
+                            <div class="status-item" id="status-alindi-confirmation">
+                                <i class="fas fa-eye"></i>
+                                <span>Alındı</span>
+                            </div>
+                            <div class="status-item" id="status-hazirlandi-confirmation">
+                                <i class="fas fa-check"></i>
+                                <span>Hazırlandı</span>
+                            </div>
+                        </div>
+                        <div class="status-message" style="text-align: center; margin-top: 1rem;">
+                            <span id="status-text-confirmation">Sipariş alındı, hazırlanıyor...</span>
+                        </div>
+                    </div>
+
                     <div class="confirmation-actions">
                         <button type="button" class="btn btn-secondary" id="back-to-drinks">
                             <i class="fas fa-arrow-left"></i>
@@ -224,6 +248,10 @@
                         <button type="button" class="btn btn-success" id="confirm-order">
                             <i class="fas fa-paper-plane"></i>
                             Siparişi Gönder
+                        </button>
+                        <button type="button" class="btn btn-primary" id="place-new-order-confirmation" style="display: none;">
+                            <i class="fas fa-plus"></i>
+                            Yeni Sipariş
                         </button>
                     </div>
                 </div>
