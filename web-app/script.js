@@ -133,46 +133,89 @@ function showCard(cardId) {
 
 // Initialize drink selection grid
 function initializeDrinkSelection() {
-    log('Initializing drink selection');
+    log('Initializing drink selection', 'info', true);
     
-    const drinkGrid = document.getElementById('drink-grid');
-    if (!drinkGrid) return;
+    // Set up event listeners for existing drink options in HTML
+    const drinkOptions = document.querySelectorAll('.drink-option');
+    log(`Found ${drinkOptions.length} drink options in HTML`, 'info', true);
     
-    const drinks = [
-        { name: 'Çay', icon: '🫖', popular: true },
-        { name: 'Kahve', icon: '☕', popular: true },
-        { name: 'Su', icon: '💧', popular: true },
-        { name: 'Ayran', icon: '🥛', popular: false },
-        { name: 'Kola', icon: '🥤', popular: false },
-        { name: 'Meyve Suyu', icon: '🧃', popular: false },
-        { name: 'Limonata', icon: '🍋', popular: false },
-        { name: 'Soğuk Çay', icon: '🧊', popular: false }
-    ];
+    drinkOptions.forEach(option => {
+        const drinkName = option.dataset.drink;
+        if (!drinkName) return;
+        
+        log(`Setting up drink option: ${drinkName}`, 'info', true);
+        
+        // Make the whole drink option clickable
+        option.addEventListener('click', (e) => {
+            // Don't trigger if clicking on quantity controls
+            if (e.target.closest('.quantity-controls')) return;
+            
+            log(`Drink option clicked: ${drinkName}`, 'info', true);
+            
+            // Show quantity controls and select the drink
+            const quantityControls = option.querySelector('.quantity-controls');
+            const quantitySpan = option.querySelector('.quantity');
+            
+            if (quantityControls && quantitySpan) {
+                quantityControls.style.display = 'flex';
+                option.classList.add('selected');
+                
+                // Set initial quantity to 1 if not already set
+                let currentQuantity = parseInt(quantitySpan.textContent) || 0;
+                if (currentQuantity === 0) {
+                    updateDrinkQuantity(drinkName, 1);
+                }
+            }
+        });
+        
+        // Set up quantity control buttons
+        const minusBtn = option.querySelector('.quantity-btn.minus');
+        const plusBtn = option.querySelector('.quantity-btn.plus');
+        
+        if (minusBtn) {
+            minusBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                log(`Minus button clicked for: ${drinkName}`, 'info', true);
+                updateDrinkQuantity(drinkName, -1);
+            });
+        }
+        
+        if (plusBtn) {
+            plusBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                log(`Plus button clicked for: ${drinkName}`, 'info', true);
+                updateDrinkQuantity(drinkName, 1);
+            });
+        }
+    });
     
-    drinkGrid.innerHTML = drinks.map(drink => `
-        <div class="drink-option ${drink.popular ? 'popular' : ''}" data-drink="${drink.name}">
-            <div class="drink-icon">${drink.icon}</div>
-            <div class="drink-name">${drink.name}</div>
-            <div class="drink-quantity">
-                <button type="button" class="quantity-btn minus-btn" onclick="updateDrinkQuantity('${drink.name}', -1)">-</button>
-                <span class="quantity-display" id="quantity-${drink.name.replace(/\s+/g, '')}">0</span>
-                <button type="button" class="quantity-btn plus-btn" onclick="updateDrinkQuantity('${drink.name}', 1)">+</button>
-            </div>
-        </div>
-    `).join('');
+    log('Drink selection initialization complete', 'info', true);
 }
 
 // Update drink quantity
 function updateDrinkQuantity(drinkName, change) {
-    const quantityId = `quantity-${drinkName.replace(/\s+/g, '')}`;
-    const quantityDisplay = document.getElementById(quantityId);
+    log(`Updating ${drinkName} quantity by ${change}`, 'info', true);
     
-    if (!quantityDisplay) return;
+    const drinkOption = document.querySelector(`[data-drink="${drinkName}"]`);
+    if (!drinkOption) {
+        log(`ERROR: Drink option not found: ${drinkName}`, 'error', true);
+        return;
+    }
     
-    let currentQuantity = parseInt(quantityDisplay.textContent) || 0;
+    const quantitySpan = drinkOption.querySelector('.quantity');
+    const quantityControls = drinkOption.querySelector('.quantity-controls');
+    
+    if (!quantitySpan) {
+        log(`ERROR: Quantity span not found for: ${drinkName}`, 'error', true);
+        return;
+    }
+    
+    let currentQuantity = parseInt(quantitySpan.textContent) || 0;
     let newQuantity = Math.max(0, currentQuantity + change);
     
-    quantityDisplay.textContent = newQuantity;
+    log(`${drinkName}: ${currentQuantity} -> ${newQuantity}`, 'info', true);
+    
+    quantitySpan.textContent = newQuantity;
     
     // Update selected drinks array
     const existingIndex = selectedDrinks.findIndex(drink => drink.name === drinkName);
@@ -184,33 +227,37 @@ function updateDrinkQuantity(drinkName, change) {
             selectedDrinks.push({ name: drinkName, quantity: newQuantity });
         }
         
-        // Add visual feedback
-        const drinkOption = document.querySelector(`[data-drink="${drinkName}"]`);
-        if (drinkOption) {
-            drinkOption.classList.add('selected');
+        // Show visual feedback and quantity controls
+        drinkOption.classList.add('selected');
+        if (quantityControls) {
+            quantityControls.style.display = 'flex';
         }
     } else {
         if (existingIndex >= 0) {
             selectedDrinks.splice(existingIndex, 1);
         }
         
-        // Remove visual feedback
-        const drinkOption = document.querySelector(`[data-drink="${drinkName}"]`);
-        if (drinkOption) {
-            drinkOption.classList.remove('selected');
+        // Remove visual feedback and hide quantity controls
+        drinkOption.classList.remove('selected');
+        if (quantityControls) {
+            quantityControls.style.display = 'none';
         }
     }
     
     updateSelectedDrinksSummary();
-    log(`Updated ${drinkName}: ${newQuantity}`);
+    log(`Updated ${drinkName}: ${newQuantity}`, 'info', true);
 }
 
 // Update selected drinks summary
 function updateSelectedDrinksSummary() {
     const summaryDiv = document.getElementById('selected-drinks-summary');
-    if (!summaryDiv) return;
+    if (!summaryDiv) {
+        log('ERROR: selected-drinks-summary element not found', 'error', true);
+        return;
+    }
     
     if (selectedDrinks.length === 0) {
+        summaryDiv.style.display = 'none';
         summaryDiv.innerHTML = '<p>Henüz içecek seçilmedi</p>';
         const continueBtn = document.getElementById('continue-to-confirmation');
         if (continueBtn) continueBtn.disabled = true;
@@ -219,6 +266,7 @@ function updateSelectedDrinksSummary() {
     
     const totalItems = selectedDrinks.reduce((sum, drink) => sum + drink.quantity, 0);
     
+    summaryDiv.style.display = 'block';
     summaryDiv.innerHTML = `
         <div class="summary-header">
             <h3>Seçilen İçecekler (${totalItems} adet)</h3>
@@ -235,6 +283,8 @@ function updateSelectedDrinksSummary() {
     
     const continueBtn = document.getElementById('continue-to-confirmation');
     if (continueBtn) continueBtn.disabled = false;
+    
+    log(`Updated summary with ${selectedDrinks.length} drinks, ${totalItems} total`, 'info', true);
 }
 
 // Handle user info form submission
