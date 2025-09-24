@@ -675,8 +675,21 @@ function updateStatusDisplay() {
     
     log(`📍 Card visibility - Success: ${successVisible}, Confirmation: ${confirmationVisible}`, 'info', true);
     
-    if (Object.keys(orderStatusData).length === 0) {
+    // CRITICAL CHECK: Make sure we have status data
+    const statusDataKeys = Object.keys(orderStatusData);
+    log(`📊 Status data keys: ${JSON.stringify(statusDataKeys)}`, 'info', true);
+    log(`📊 Current order IDs: ${JSON.stringify(currentOrderIds)}`, 'info', true);
+    
+    if (statusDataKeys.length === 0) {
         log('❌ No order status data available - exiting updateStatusDisplay', 'warn', true);
+        // Try to force an update anyway for testing
+        log('🧪 Forcing manual status update for testing...', 'info', true);
+        try {
+            updateCardStatusItems('alindi');
+            log('🧪 Manual update succeeded', 'info', true);
+        } catch (error) {
+            log(`🧪 Manual update failed: ${error.message}`, 'error', true);
+        }
         return;
     }
     
@@ -694,16 +707,32 @@ function updateStatusDisplay() {
         log(`🔄 Some orders in progress - status: ${overallStatus}`, 'info', true);
     }
     
-    log(`🎯 Overall status determined: ${overallStatus}`, 'info', true);
+    log(`🎯 FINAL Overall status determined: ${overallStatus}`, 'info', true);
+    log(`🎯 About to call updateCardStatusItems with: ${overallStatus}`, 'info', true);
     
-    // CRITICAL: Call the status items update function
+    // CRITICAL: Call the status items update function with error handling
     try {
-        log(`🚀 About to call updateCardStatusItems with status: ${overallStatus}`, 'info', true);
+        log(`🚀 CALLING updateCardStatusItems(${overallStatus})`, 'info', true);
         updateCardStatusItems(overallStatus);
-        log(`✅ updateCardStatusItems completed successfully`, 'info', true);
+        log(`✅ updateCardStatusItems completed successfully for ${overallStatus}`, 'info', true);
     } catch (error) {
-        log(`❌ ERROR in updateCardStatusItems: ${error.message}`, 'error', true);
+        log(`❌ CRITICAL ERROR in updateCardStatusItems: ${error.message}`, 'error', true);
         log(`❌ ERROR stack: ${error.stack}`, 'error', true);
+        
+        // Try a simpler approach
+        try {
+            log(`🔄 Trying simple approach...`, 'info', true);
+            const alindiElement = document.getElementById('status-alindi-confirmation');
+            if (alindiElement) {
+                alindiElement.style.color = '#667eea';
+                alindiElement.style.opacity = '1';
+                log(`🔧 Direct style applied to status-alindi-confirmation`, 'info', true);
+            } else {
+                log(`❌ status-alindi-confirmation element not found`, 'error', true);
+            }
+        } catch (simpleError) {
+            log(`❌ Simple approach also failed: ${simpleError.message}`, 'error', true);
+        }
     }
     
     // Show toast notification for status changes
@@ -730,7 +759,7 @@ function updateStatusDisplay() {
         }
     }
     
-    log(`🏁 updateStatusDisplay completed`, 'info', true);
+    log(`🏁 updateStatusDisplay completed for status: ${overallStatus}`, 'info', true);
 }
 
 // Update status card items
