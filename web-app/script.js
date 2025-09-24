@@ -478,19 +478,50 @@ async function simulateOrderCreation() {
 
 // Show order status section in confirmation card
 function showOrderStatusSection() {
+    log(`🎯 showOrderStatusSection called`, 'info', true);
+    
     const statusSection = document.getElementById('order-status-section');
     const confirmButton = document.getElementById('confirm-order');
     const backButton = document.getElementById('back-to-drinks');
     const newOrderButton = document.getElementById('place-new-order-confirmation');
     
+    log(`📍 Elements found - StatusSection: ${statusSection ? 'YES' : 'NO'}, ConfirmBtn: ${confirmButton ? 'YES' : 'NO'}`, 'info', true);
+    
     if (statusSection) {
+        log(`📍 StatusSection display BEFORE: ${statusSection.style.display}`, 'info', true);
         statusSection.style.display = 'block';
+        statusSection.style.visibility = 'visible';
+        log(`📍 StatusSection display AFTER: ${statusSection.style.display}`, 'info', true);
+        
+        // Force layout recalculation
+        statusSection.offsetHeight;
+        log(`📍 Forced layout recalculation`, 'info', true);
     }
     
     // Hide confirmation buttons, show new order button
-    if (confirmButton) confirmButton.style.display = 'none';
-    if (backButton) backButton.style.display = 'none';
-    if (newOrderButton) newOrderButton.style.display = 'inline-flex';
+    if (confirmButton) {
+        confirmButton.style.display = 'none';
+        log(`📍 Confirm button hidden`, 'info', true);
+    }
+    if (backButton) {
+        backButton.style.display = 'none'; 
+        log(`📍 Back button hidden`, 'info', true);
+    }
+    if (newOrderButton) {
+        newOrderButton.style.display = 'inline-flex';
+        log(`📍 New order button shown`, 'info', true);
+    }
+    
+    // Double-check the status items after showing the section
+    setTimeout(() => {
+        const statusItems = document.querySelectorAll('#order-status-section .status-item');
+        log(`📍 Status items in section after show: ${statusItems.length}`, 'info', true);
+        statusItems.forEach((item, index) => {
+            log(`📍 Status item ${index}: id="${item.id}", visible=${item.offsetParent !== null}, display=${getComputedStyle(item).display}`, 'info', true);
+        });
+    }, 100);
+    
+    log(`🏁 showOrderStatusSection completed`, 'info', true);
 }
 
 // Update success card with order info
@@ -693,37 +724,50 @@ function updateStatusDisplay() {
 
 // Update status card items
 function updateCardStatusItems(status) {
-    log(`updateCardStatusItems called with status: ${status}`, 'info', true);
+    log(`🔄 updateCardStatusItems called with status: ${status}`, 'info', true);
+    
+    // First, let's see what's currently visible
+    const orderStatusSection = document.getElementById('order-status-section');
+    log(`📍 order-status-section found: ${orderStatusSection ? 'YES' : 'NO'}`, 'info', true);
+    log(`📍 order-status-section display: ${orderStatusSection?.style.display}`, 'info', true);
     
     // Get all status items in the current visible card
     const allStatusItems = document.querySelectorAll('.status-item');
-    log(`Found total ${allStatusItems.length} status items`, 'info', true);
+    log(`📍 Found total ${allStatusItems.length} status items`, 'info', true);
+    
+    // List all found status items
+    allStatusItems.forEach((item, index) => {
+        log(`📍 Status item ${index}: id="${item.id}", visible=${item.offsetParent !== null}`, 'info', true);
+    });
+    
+    // Check specific confirmation elements
+    const statusNewConf = document.getElementById('status-new-confirmation');
+    const statusAlindiConf = document.getElementById('status-alindi-confirmation'); 
+    const statusHazirlandiConf = document.getElementById('status-hazirlandi-confirmation');
+    
+    log(`📍 Confirmation elements - New: ${statusNewConf ? 'YES' : 'NO'}, Alindi: ${statusAlindiConf ? 'YES' : 'NO'}, Hazirlandi: ${statusHazirlandiConf ? 'YES' : 'NO'}`, 'info', true);
+    
+    if (statusAlindiConf) {
+        log(`📍 Alindi element current style: color="${statusAlindiConf.style.color}", opacity="${statusAlindiConf.style.opacity}", classes="${statusAlindiConf.className}"`, 'info', true);
+    }
     
     // Reset all status items first
     allStatusItems.forEach(item => {
         item.classList.remove('active', 'completed');
         item.style.opacity = '0.5';
-        item.style.color = '';
-        log(`Reset item ${item.id}`, 'info', true);
+        item.style.color = '#666';
+        const icon = item.querySelector('i');
+        if (icon) icon.style.color = '#666';
+        log(`🔄 Reset item ${item.id}`, 'info', true);
     });
     
     // Update based on status with direct style manipulation
-    if (status === 'new') {
-        const newItems = document.querySelectorAll('#status-new, #status-new-confirmation');
-        newItems.forEach(item => {
-            if (item) {
-                item.classList.add('active');
-                item.style.opacity = '1';
-                item.style.color = '#667eea';
-                const icon = item.querySelector('i');
-                if (icon) icon.style.color = '#667eea';
-                log(`Set NEW item ${item.id} as active`, 'info', true);
-            }
-        });
+    if (status === 'alindi') {
+        log(`🎯 Processing ALINDI status...`, 'info', true);
         
-    } else if (status === 'alindi') {
         // Mark new as completed  
         const newItems = document.querySelectorAll('#status-new, #status-new-confirmation');
+        log(`📍 Found ${newItems.length} NEW items for completion`, 'info', true);
         newItems.forEach(item => {
             if (item) {
                 item.classList.add('completed');
@@ -731,24 +775,35 @@ function updateCardStatusItems(status) {
                 item.style.color = '#28a745';
                 const icon = item.querySelector('i');
                 if (icon) icon.style.color = '#28a745';
-                log(`Set NEW item ${item.id} as completed`, 'info', true);
+                log(`✅ Set NEW item ${item.id} as completed`, 'info', true);
             }
         });
         
         // Mark alindi as active
         const alindiItems = document.querySelectorAll('#status-alindi, #status-alindi-confirmation');
+        log(`📍 Found ${alindiItems.length} ALINDI items for activation`, 'info', true);
         alindiItems.forEach(item => {
             if (item) {
                 item.classList.add('active');
                 item.style.opacity = '1';
                 item.style.color = '#667eea';
+                item.style.fontWeight = 'bold';
                 const icon = item.querySelector('i');
-                if (icon) icon.style.color = '#667eea';
-                log(`Set ALINDI item ${item.id} as active`, 'info', true);
+                if (icon) {
+                    icon.style.color = '#667eea';
+                    icon.style.fontSize = '1.2em';
+                }
+                log(`🔵 Set ALINDI item ${item.id} as active with blue color`, 'info', true);
+                
+                // Force a repaint
+                item.offsetHeight;
+                log(`🔄 Forced repaint for ${item.id}`, 'info', true);
             }
         });
         
     } else if (status === 'hazirlandi') {
+        log(`🎯 Processing HAZIRLANDI status...`, 'info', true);
+        
         // Mark new and alindi as completed
         const completedItems = document.querySelectorAll('#status-new, #status-new-confirmation, #status-alindi, #status-alindi-confirmation');
         completedItems.forEach(item => {
@@ -758,7 +813,7 @@ function updateCardStatusItems(status) {
                 item.style.color = '#28a745';
                 const icon = item.querySelector('i');
                 if (icon) icon.style.color = '#28a745';
-                log(`Set item ${item.id} as completed`, 'info', true);
+                log(`✅ Set item ${item.id} as completed`, 'info', true);
             }
         });
         
@@ -769,9 +824,26 @@ function updateCardStatusItems(status) {
                 item.classList.add('active');
                 item.style.opacity = '1';
                 item.style.color = '#667eea';
+                item.style.fontWeight = 'bold';
+                const icon = item.querySelector('i');
+                if (icon) {
+                    icon.style.color = '#667eea';
+                    icon.style.fontSize = '1.2em';
+                }
+                log(`🔵 Set HAZIRLANDI item ${item.id} as active with blue color`, 'info', true);
+            }
+        });
+    } else {
+        // Default new status
+        const newItems = document.querySelectorAll('#status-new, #status-new-confirmation');
+        newItems.forEach(item => {
+            if (item) {
+                item.classList.add('active');
+                item.style.opacity = '1';
+                item.style.color = '#667eea';
                 const icon = item.querySelector('i');
                 if (icon) icon.style.color = '#667eea';
-                log(`Set HAZIRLANDI item ${item.id} as active`, 'info', true);
+                log(`🔵 Set NEW item ${item.id} as active`, 'info', true);
             }
         });
     }
@@ -781,12 +853,15 @@ function updateCardStatusItems(status) {
     if (statusTextConfirmation) {
         const statusMessages = {
             'new': 'Sipariş alındı, hazırlanıyor...',
-            'alindi': 'Aşçı siparişinizi aldı, hazırlanıyor...',
-            'hazirlandi': 'Siparişiniz hazır! Teslim alabilirsiniz.'
+            'alindi': '🔵 Aşçı siparişinizi aldı, hazırlanıyor...',
+            'hazirlandi': '🎉 Siparişiniz hazır! Teslim alabilirsiniz.'
         };
         statusTextConfirmation.textContent = statusMessages[status] || 'Durum güncelleniyor...';
-        log(`Updated confirmation status text: ${statusMessages[status]}`, 'info', true);
+        statusTextConfirmation.style.color = status === 'alindi' ? '#667eea' : (status === 'hazirlandi' ? '#28a745' : '#333');
+        log(`💬 Updated confirmation status text: ${statusMessages[status]}`, 'info', true);
     }
+    
+    log(`🏁 updateCardStatusItems completed for status: ${status}`, 'info', true);
 }
 
 // Stop status checking
