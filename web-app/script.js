@@ -3,6 +3,7 @@ const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c';
 
 // Test mode - set to true for offline testing
+const TEST_MODE = true;
 
 // Initialize Supabase client
 let supabase = null;
