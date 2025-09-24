@@ -251,6 +251,8 @@ function updateDrinkQuantity(drinkName, change) {
 // Update selected drinks summary
 function updateSelectedDrinksSummary() {
     const summaryDiv = document.getElementById('selected-drinks-summary');
+    const continueBtn = document.getElementById('continue-to-confirmation');
+    
     if (!summaryDiv) {
         log('ERROR: selected-drinks-summary element not found', 'error', true);
         return;
@@ -259,13 +261,16 @@ function updateSelectedDrinksSummary() {
     if (selectedDrinks.length === 0) {
         summaryDiv.style.display = 'none';
         summaryDiv.innerHTML = '<p>Henüz içecek seçilmedi</p>';
-        const continueBtn = document.getElementById('continue-to-confirmation');
-        if (continueBtn) continueBtn.disabled = true;
+        if (continueBtn) {
+            continueBtn.disabled = true;
+            continueBtn.style.display = 'none';
+        }
         return;
     }
     
     const totalItems = selectedDrinks.reduce((sum, drink) => sum + drink.quantity, 0);
     
+    // Show the summary
     summaryDiv.style.display = 'block';
     summaryDiv.innerHTML = `
         <div class="summary-header">
@@ -281,8 +286,11 @@ function updateSelectedDrinksSummary() {
         </div>
     `;
     
-    const continueBtn = document.getElementById('continue-to-confirmation');
-    if (continueBtn) continueBtn.disabled = false;
+    // Show and enable the continue button
+    if (continueBtn) {
+        continueBtn.disabled = false;
+        continueBtn.style.display = 'inline-flex';
+    }
     
     log(`Updated summary with ${selectedDrinks.length} drinks, ${totalItems} total`, 'info', true);
 }
