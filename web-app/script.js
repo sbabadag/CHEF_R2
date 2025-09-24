@@ -363,35 +363,58 @@ function showLoading(show = true) {
 
 // Card navigation
 function showCard(cardId) {
-    log(`Showing card: ${cardId}`);
+    log(`🔄 Attempting to show card: ${cardId}`, 'info', true);
     
-    // Hide all cards
-    const cards = document.querySelectorAll('.card');
-    cards.forEach(card => {
-        card.classList.remove('active');
-        card.style.display = 'none';
-    });
-    
-    // Show the selected card
-    const targetCard = document.getElementById(cardId + '-card');
-    if (targetCard) {
-        targetCard.style.display = 'block';
-        targetCard.classList.add('active');
-    } else {
-        log(`❌ Card not found: ${cardId}`, 'error');
+    try {
+        // Hide all cards
+        const cards = document.querySelectorAll('.card');
+        log(`Found ${cards.length} cards to hide`);
+        cards.forEach(card => {
+            card.classList.remove('active');
+            card.style.display = 'none';
+        });
+        
+        // Show the selected card
+        const targetCard = document.getElementById(cardId + '-card');
+        if (targetCard) {
+            targetCard.style.display = 'block';
+            targetCard.classList.add('active');
+            log(`✅ Successfully showed card: ${cardId}`, 'info', true);
+            
+            // If showing drink selection, retry setting up drink events
+            if (cardId === 'drink-selection') {
+                setTimeout(() => {
+                    setupDrinkSelection();
+                }, 100);
+            }
+        } else {
+            log(`❌ Card not found: ${cardId}-card`, 'error', true);
+            log(`Available cards: ${Array.from(document.querySelectorAll('.card')).map(c => c.id).join(', ')}`, 'error', true);
+            
+            // Fallback - show user info card
+            const fallbackCard = document.getElementById('user-info-card');
+            if (fallbackCard) {
+                fallbackCard.style.display = 'block';
+                fallbackCard.classList.add('active');
+                log(`Fallback: Showing user-info-card`, 'warn', true);
+            }
+        }
+    } catch (error) {
+        log(`Error in showCard: ${error.message}`, 'error', true);
     }
 }
 
 // User info submission
 function handleUserInfoSubmit(e) {
     e.preventDefault();
+    log('🔄 Form submission started', 'info', true);
     
     try {
         const nameInput = document.getElementById('customer-name');
         const departmentInput = document.getElementById('customer-department');
         
         if (!nameInput || !departmentInput) {
-            log('Form inputs not found', 'error');
+            log('❌ Form inputs not found', 'error', true);
             showToast('Form hatası - sayfa yenilenecek', 'error');
             setTimeout(() => location.reload(), 2000);
             return;
@@ -400,7 +423,10 @@ function handleUserInfoSubmit(e) {
         const name = nameInput.value.trim();
         const department = departmentInput.value.trim();
         
+        log(`📝 Form data - Name: "${name}", Department: "${department}"`, 'info', true);
+        
         if (!name || !department) {
+            log('❌ Empty fields detected', 'warn', true);
             showToast('Lütfen tüm alanları doldurun', 'error');
             return;
         }
@@ -408,13 +434,15 @@ function handleUserInfoSubmit(e) {
         // Store user info
         window.currentUser = { customerName: name, department: department };
         
-        log(`User info saved: ${name} - ${department}`);
+        log(`✅ User info saved: ${name} - ${department}`, 'info', true);
         showToast('Bilgiler kaydedildi', 'success');
         
         // Move to drink selection
+        log('🚀 Navigating to drink-selection card', 'info', true);
         showCard('drink-selection');
+        
     } catch (error) {
-        log(`Error in handleUserInfoSubmit: ${error.message}`, 'error');
+        log(`❌ Error in handleUserInfoSubmit: ${error.message}`, 'error', true);
         showToast('Form işleminde hata oluştu', 'error');
     }
 }
