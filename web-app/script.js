@@ -248,6 +248,9 @@ function updateDrinkQuantity(drinkName, change) {
     log(`Updated ${drinkName}: ${newQuantity}`, 'info', true);
 }
 
+// Global variables for status tracking
+let orderStatusData = {};
+
 // Update order confirmation page
 function updateOrderConfirmation() {
     log('Updating order confirmation page', 'info', true);
@@ -500,20 +503,173 @@ function updateSuccessCardInfo() {
             <p class="order-status">Durum: <span id="status-text">Sipariş Alındı</span></p>
         </div>
     `;
+    
+    // Set order creation time for test mode
+    window.orderCreatedTime = Date.now();
 }
 
-// Start checking order status
+// Start real-time status checking
 function startStatusCheck() {
+    log('Starting real-time status check', 'info', true);
+    
+    // Clear any existing interval
     if (statusCheckInterval) {
         clearInterval(statusCheckInterval);
     }
     
-    if (TEST_MODE) {
-        // Test mode - simulate status changes
-        simulateStatusUpdates();
-    } else if (supabase && currentOrderIds.length > 0) {
-        // Real-time status checking
-        statusCheckInterval = setInterval(checkOrderStatus, 5000); // Check every 5 seconds
+    // Initial status update
+    updateOrderStatus();
+    
+    // Check status every 5 seconds
+    statusCheckInterval = setInterval(() => {
+        updateOrderStatus();
+    }, 5000);
+    
+    log(`Status checking started for orders: ${currentOrderIds.join(', ')}`, 'info', true);
+}
+
+// Update order status in real-time
+async function updateOrderStatus() {
+    if (currentOrderIds.length === 0) {
+        log('No order IDs to track', 'info');
+        return;
+    }
+    
+    try {
+        if (TEST_MODE) {
+            // Test mode - simulate status progression
+            simulateStatusProgression();
+        } else {
+            // Production mode - check actual status from database
+            await checkOrderStatusFromDatabase();
+        }
+        
+        updateStatusDisplay();
+    } catch (error) {
+        log(`Status check error: ${error.message}`, 'error', true);
+    }
+}
+
+// Check order status from Supabase
+async function checkOrderStatusFromDatabase() {
+    if (!supabase) {
+        log('Supabase not available for status check', 'warn');
+        return;
+    }
+    
+    const { data, error } = await supabase
+        .from('drink_orders')
+        .select('id, status')
+        .in('id', currentOrderIds);
+    
+    if (error) {
+        throw new Error(`Status check failed: ${error.message}`);
+    }
+    
+    // Update status data
+    orderStatusData = {};
+    data.forEach(order => {
+        orderStatusData[order.id] = order.status;
+    });
+    
+    log(`Status updated: ${JSON.stringify(orderStatusData)}`, 'info', true);
+}
+
+// Simulate status progression for test mode
+function simulateStatusProgression() {
+    const now = Date.now();
+    const elapsed = now - (window.orderCreatedTime || now);
+    
+    // Simulate progression: new -> alindi (after 10s) -> hazirlandi (after 30s)
+    let simulatedStatus = 'new';
+    if (elapsed > 30000) { // 30 seconds
+        simulatedStatus = 'hazirlandi';
+    } else if (elapsed > 10000) { // 10 seconds
+        simulatedStatus = 'alindi';
+    }
+    
+    // Update all orders with same status for simplicity
+    orderStatusData = {};
+    currentOrderIds.forEach(id => {
+        orderStatusData[id] = simulatedStatus;
+    });
+    
+    log(`Simulated status: ${simulatedStatus} (elapsed: ${Math.floor(elapsed/1000)}s)`, 'info', true);
+}
+
+// Update status display on the page
+function updateStatusDisplay() {
+    if (Object.keys(orderStatusData).length === 0) return;
+    
+    // Determine overall status (most advanced status among all orders)
+    const statuses = Object.values(orderStatusData);
+    let overallStatus = 'new';
+    
+    if (statuses.every(status => status === 'hazirlandi')) {
+        overallStatus = 'hazirlandi';
+    } else if (statuses.some(status => status === 'alindi' || status === 'hazirlandi')) {
+        overallStatus = 'alindi';
+    }
+    
+    log(`Overall status: ${overallStatus}`, 'info', true);
+    
+    // Update status text
+    const statusText = document.getElementById('status-text');
+    if (statusText) {
+        const statusMessages = {
+            'new': 'Yeni Sipariş',
+            'alindi': 'Sipariş Alındı - Hazırlanıyor',
+            'hazirlandi': 'Sipariş Hazır!'
+        };
+        statusText.textContent = statusMessages[overallStatus] || 'Bilinmiyor';
+    }
+    
+    // Update card status items
+    updateCardStatusItems(overallStatus);
+    
+    // Stop checking if all orders are completed
+    if (overallStatus === 'hazirlandi') {
+        log('All orders completed, stopping status check', 'info', true);
+        stopStatusCheck();
+        showToast('Siparişiniz hazır! ✅', 'success');
+        
+        // Play notification sound or vibration if available
+        if ('vibrate' in navigator) {
+            navigator.vibrate([200, 100, 200]);
+        }
+    }
+}
+
+// Update status card items
+function updateCardStatusItems(status) {
+    const statusItems = document.querySelectorAll('.status-item');
+    statusItems.forEach(item => {
+        item.classList.remove('active', 'completed');
+    });
+    
+    // Update individual status items
+    const statusNew = document.getElementById('status-new');
+    const statusAlindi = document.getElementById('status-alindi');
+    const statusHazirlandi = document.getElementById('status-hazirlandi');
+    
+    if (status === 'new') {
+        statusNew?.classList.add('active');
+    } else if (status === 'alindi') {
+        statusNew?.classList.add('completed');
+        statusAlindi?.classList.add('active');
+    } else if (status === 'hazirlandi') {
+        statusNew?.classList.add('completed');
+        statusAlindi?.classList.add('completed');
+        statusHazirlandi?.classList.add('active');
+    }
+}
+
+// Stop status checking
+function stopStatusCheck() {
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+        statusCheckInterval = null;
+        log('Status checking stopped', 'info', true);
     }
 }
 
@@ -611,12 +767,12 @@ function simulateStatusUpdates() {
 function resetApp() {
     selectedDrinks = [];
     currentOrderIds = [];
+    orderStatusData = {};
     window.currentUser = null;
+    window.orderCreatedTime = null;
     
-    if (statusCheckInterval) {
-        clearInterval(statusCheckInterval);
-        statusCheckInterval = null;
-    }
+    // Stop status checking
+    stopStatusCheck();
     
     // Reset drink quantities
     const quantityDisplays = document.querySelectorAll('.quantity-display');
