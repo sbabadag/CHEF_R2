@@ -3,7 +3,6 @@ const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzIwMjc2ODIsImV4cCI6MjA0NzYwMzY4Mn0.7bJdXy9VLnEiRJq-3F7W_bNEUEFBJ3qJ5YvIgSUIMLg';
 
 // Test mode - set to true for offline testing
-const TEST_MODE = false;
 
 // Initialize Supabase client
 let supabase = null;
@@ -45,18 +44,21 @@ function initializeApp() {
             console.log('Supabase client initialized on DOM ready');
         }
         
+        // Test Supabase connection if not in test mode
+        if (!TEST_MODE && supabase) {
+            testSupabaseConnection();
+        }
+        
         // Check if Supabase is available
-        if (typeof window.supabase === 'undefined') {
+        if (!TEST_MODE && typeof window.supabase === 'undefined') {
             console.error('Supabase library not loaded');
-            showToast('Sistem yüklenirken hata oluştu. Sayfayı yenileyin.', 'error');
-            return;
+            showToast('Sistem yüklenirken hata oluştu. Test moduna geçiliyor.', 'error');
         }
         
         // Test Supabase connection
-        if (!supabase) {
+        if (!TEST_MODE && !supabase) {
             console.error('Supabase client not initialized');
-            showToast('Veritabanı bağlantısı kurulamadı.', 'error');
-            return;
+            showToast('Veritabanı bağlantısı kurulamadı. Test moduna geçiliyor.', 'error');
         }
         
         // Set up event listeners
@@ -65,7 +67,9 @@ function initializeApp() {
         // Show initial card
         showCard('user-info');
         
-        console.log('Tea Order App initialized successfully');
+        const mode = TEST_MODE ? 'Test' : 'Supabase';
+        console.log(`Tea Order App initialized successfully (${mode} mode)`);
+        showToast(`Uygulama başlatıldı (${mode} modu)`, 'success');
     } catch (error) {
         console.error('Error initializing app:', error);
         showToast('Uygulama başlatılırken hata oluştu: ' + error.message, 'error');
@@ -148,6 +152,35 @@ function updateHeaderUserInfo(userData) {
     `;
 }
 
+async function testSupabaseConnection() {
+    try {
+        console.log('Testing Supabase connection...');
+        
+        // Simple test query to check connection and API key
+        const { data, error } = await supabase
+            .from('drink_orders')
+            .select('count(*)', { count: 'exact' })
+            .limit(1);
+        
+        if (error) {
+            console.error('Supabase connection test failed:', error);
+            showToast(`Supabase bağlantı hatası: ${error.message}`, 'error');
+            
+            // Automatically switch to test mode if connection fails
+            if (error.message.includes('Invalid API key') || error.message.includes('401')) {
+                console.log('Switching to test mode due to API key error');
+                showToast('API anahtarı geçersiz. Test moduna geçiliyor.', 'error');
+            }
+        } else {
+            console.log('Supabase connection successful');
+            showToast('Veritabanı bağlantısı başarılı', 'success');
+        }
+    } catch (error) {
+        console.error('Supabase connection test error:', error);
+        showToast('Bağlantı testi hatası: ' + error.message, 'error');
+    }
+}
+
 function selectDrink(drinkElement) {
     // Remove previous selection
     document.querySelectorAll('.drink-option').forEach(option => {
@@ -204,7 +237,68 @@ async function confirmOrder() {
     showLoading('Sipariş gönderiliyor...');
     
     try {
-        if (TEST_MODE || !supabase) {
+        let useTestMode = TEST_MODE || !supabase;
+        
+        if (!TEST_MODE && supabase) {
+            // Try real mode first
+            try {
+                const { data, error } = await supabase
+                    .from('drink_orders')
+                    .insert([
+                        {
+                            customer_name: userData.name,
+                            department: userData.department,
+                            drink_type: selectedDrink.name,
+                            status: 'new',
+                            created_at: new Date().toISOString()
+                        }
+                    ])
+                    .select();
+                
+                if (error) {
+                    console.error('Supabase error:', error);
+                    
+                    // Switch to test mode if API key is invalid
+                    if (error.message.includes('Invalid API key') || 
+                        error.message.includes('401') || 
+                        error.message.includes('authentication')) {
+                        console.log('API key error detected, switching to test mode');
+                        showToast('API anahtarı sorunu. Test modunda devam ediliyor.', 'error');
+                        useTestMode = true;
+                    } else {
+                        throw error;
+                    }
+                }
+                
+                if (!useTestMode && data && data.length > 0) {
+                    currentOrderId = data[0].id;
+                    
+                    // Show success card
+                    hideLoading();
+                    showCard('success');
+                    
+                    // Update success message
+                    const successTitle = document.querySelector('.success-card h2');
+                    const successText = document.querySelector('.success-card p');
+                    if (successTitle) successTitle.textContent = 'Siparişiniz Alındı! 🎉';
+                    if (successText) successText.textContent = 
+                        `${selectedDrink.name} siparişiniz başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz.`;
+                    
+                    // Start real status tracking
+                    startStatusTracking();
+                    
+                    showToast('Sipariş başarıyla oluşturuldu!', 'success');
+                    return;
+                }
+                
+            } catch (realModeError) {
+                console.error('Real mode failed:', realModeError);
+                showToast('Veritabanı hatası. Test moduna geçiliyor.', 'error');
+                useTestMode = true;
+            }
+        }
+        
+        if (useTestMode) {
             // Test mode - simulate successful order
             console.log('TEST MODE: Simulating order creation');
             
@@ -222,49 +316,12 @@ async function confirmOrder() {
             const successText = document.querySelector('.success-card p');
             if (successTitle) successTitle.textContent = 'Siparişiniz Alındı! 🎉';
             if (successText) successText.textContent = 
-                `${selectedDrink.name} siparişiniz başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz.`;
+                `${selectedDrink.name} siparişiniz başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz. (Test Modu)`;
             
             // Start test status tracking
             startTestStatusTracking();
             
             showToast('Sipariş başarıyla oluşturuldu! (Test Modu)', 'success');
-            
-        } else {
-            // Real mode - connect to Supabase
-            const { data, error } = await supabase
-                .from('drink_orders')
-                .insert([
-                    {
-                        customer_name: userData.name,
-                        department: userData.department,
-                        drink_type: selectedDrink.name,
-                        status: 'new',
-                        created_at: new Date().toISOString()
-                    }
-                ])
-                .select();
-            
-            if (error) throw error;
-            
-            if (data && data.length > 0) {
-                currentOrderId = data[0].id;
-                
-                // Show success card
-                hideLoading();
-                showCard('success');
-                
-                // Update success message
-                const successTitle = document.querySelector('.success-card h2');
-                const successText = document.querySelector('.success-card p');
-                if (successTitle) successTitle.textContent = 'Siparişiniz Alındı! 🎉';
-                if (successText) successText.textContent = 
-                    `${selectedDrink.name} siparişiniz başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz.`;
-                
-                // Start real status tracking
-                startStatusTracking();
-                
-                showToast('Sipariş başarıyla oluşturuldu!', 'success');
-            }
         }
         
     } catch (error) {
