@@ -636,6 +636,14 @@ function simulateStatusProgression() {
 function updateStatusDisplay() {
     log(`updateStatusDisplay called with orderStatusData: ${JSON.stringify(orderStatusData)}`, 'info', true);
     
+    // Debug: Check which cards are currently visible
+    const successCard = document.getElementById('success-card');
+    const confirmationCard = document.getElementById('order-confirmation-card');
+    const successVisible = successCard && successCard.style.display !== 'none';
+    const confirmationVisible = confirmationCard && confirmationCard.style.display !== 'none';
+    
+    log(`Card visibility - Success: ${successVisible}, Confirmation: ${confirmationVisible}`, 'info', true);
+    
     if (Object.keys(orderStatusData).length === 0) {
         log('No order status data available - exiting updateStatusDisplay', 'warn', true);
         return;
@@ -687,40 +695,86 @@ function updateStatusDisplay() {
 function updateCardStatusItems(status) {
     log(`updateCardStatusItems called with status: ${status}`, 'info', true);
     
-    // Update both success card and confirmation card status items
-    const statusSelectors = [
-        // Success card elements
-        { new: '#status-new', alindi: '#status-alindi', hazirlandi: '#status-hazirlandi' },
-        // Confirmation card elements  
-        { new: '#status-new-confirmation', alindi: '#status-alindi-confirmation', hazirlandi: '#status-hazirlandi-confirmation' }
-    ];
+    // Get all status items in the current visible card
+    const allStatusItems = document.querySelectorAll('.status-item');
+    log(`Found total ${allStatusItems.length} status items`, 'info', true);
     
-    statusSelectors.forEach(selectors => {
-        const statusNew = document.querySelector(selectors.new);
-        const statusAlindi = document.querySelector(selectors.alindi);
-        const statusHazirlandi = document.querySelector(selectors.hazirlandi);
-        
-        // Reset all items
-        [statusNew, statusAlindi, statusHazirlandi].forEach(item => {
+    // Reset all status items first
+    allStatusItems.forEach(item => {
+        item.classList.remove('active', 'completed');
+        item.style.opacity = '0.5';
+        item.style.color = '';
+        log(`Reset item ${item.id}`, 'info', true);
+    });
+    
+    // Update based on status with direct style manipulation
+    if (status === 'new') {
+        const newItems = document.querySelectorAll('#status-new, #status-new-confirmation');
+        newItems.forEach(item => {
             if (item) {
-                item.classList.remove('active', 'completed');
+                item.classList.add('active');
+                item.style.opacity = '1';
+                item.style.color = '#667eea';
+                const icon = item.querySelector('i');
+                if (icon) icon.style.color = '#667eea';
+                log(`Set NEW item ${item.id} as active`, 'info', true);
             }
         });
         
-        if (status === 'new') {
-            log('Setting status-new as active', 'info', true);
-            statusNew?.classList.add('active');
-        } else if (status === 'alindi') {
-            log('Setting status-new as completed and status-alindi as active', 'info', true);
-            statusNew?.classList.add('completed');
-            statusAlindi?.classList.add('active');
-        } else if (status === 'hazirlandi') {
-            log('Setting status-new and status-alindi as completed, status-hazirlandi as active', 'info', true);
-            statusNew?.classList.add('completed');
-            statusAlindi?.classList.add('completed');
-            statusHazirlandi?.classList.add('active');
-        }
-    });
+    } else if (status === 'alindi') {
+        // Mark new as completed  
+        const newItems = document.querySelectorAll('#status-new, #status-new-confirmation');
+        newItems.forEach(item => {
+            if (item) {
+                item.classList.add('completed');
+                item.style.opacity = '1';
+                item.style.color = '#28a745';
+                const icon = item.querySelector('i');
+                if (icon) icon.style.color = '#28a745';
+                log(`Set NEW item ${item.id} as completed`, 'info', true);
+            }
+        });
+        
+        // Mark alindi as active
+        const alindiItems = document.querySelectorAll('#status-alindi, #status-alindi-confirmation');
+        alindiItems.forEach(item => {
+            if (item) {
+                item.classList.add('active');
+                item.style.opacity = '1';
+                item.style.color = '#667eea';
+                const icon = item.querySelector('i');
+                if (icon) icon.style.color = '#667eea';
+                log(`Set ALINDI item ${item.id} as active`, 'info', true);
+            }
+        });
+        
+    } else if (status === 'hazirlandi') {
+        // Mark new and alindi as completed
+        const completedItems = document.querySelectorAll('#status-new, #status-new-confirmation, #status-alindi, #status-alindi-confirmation');
+        completedItems.forEach(item => {
+            if (item) {
+                item.classList.add('completed');
+                item.style.opacity = '1';
+                item.style.color = '#28a745';
+                const icon = item.querySelector('i');
+                if (icon) icon.style.color = '#28a745';
+                log(`Set item ${item.id} as completed`, 'info', true);
+            }
+        });
+        
+        // Mark hazirlandi as active
+        const hazirlandiItems = document.querySelectorAll('#status-hazirlandi, #status-hazirlandi-confirmation');
+        hazirlandiItems.forEach(item => {
+            if (item) {
+                item.classList.add('active');
+                item.style.opacity = '1';
+                item.style.color = '#667eea';
+                const icon = item.querySelector('i');
+                if (icon) icon.style.color = '#667eea';
+                log(`Set HAZIRLANDI item ${item.id} as active`, 'info', true);
+            }
+        });
+    }
     
     // Update status text in confirmation card
     const statusTextConfirmation = document.getElementById('status-text-confirmation');

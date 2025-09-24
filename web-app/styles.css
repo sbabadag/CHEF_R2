@@ -516,21 +516,25 @@ body {
     align-items: center;
     gap: 0.5rem;
     opacity: 0.5;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease, color 0.3s ease;
 }
 
 .status-item.active {
     opacity: 1;
-    color: #667eea;
+    color: #667eea !important;
+}
+
+.status-item.active i {
+    color: #667eea !important;
 }
 
 .status-item.completed {
     opacity: 1;
-    color: #28a745;
+    color: #28a745 !important;
 }
 
 .status-item.completed i {
-    color: #28a745;
+    color: #28a745 !important;
 }
 
 /* Status progress bar */
