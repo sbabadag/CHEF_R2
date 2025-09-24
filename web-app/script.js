@@ -248,6 +248,58 @@ function updateDrinkQuantity(drinkName, change) {
     log(`Updated ${drinkName}: ${newQuantity}`, 'info', true);
 }
 
+// Update order confirmation page
+function updateOrderConfirmation() {
+    log('Updating order confirmation page', 'info', true);
+    
+    // Get user info
+    const nameInput = document.querySelector('input[name="name"]');
+    const departmentSelect = document.querySelector('select[name="department"]');
+    
+    const customerName = nameInput ? nameInput.value.trim() : '';
+    const department = departmentSelect ? departmentSelect.value : '';
+    
+    log(`Customer: ${customerName}, Department: ${department}`, 'info', true);
+    
+    // Update user info
+    const summaryUser = document.getElementById('summary-user');
+    if (summaryUser) {
+        const userSpan = summaryUser.querySelector('span');
+        if (userSpan) {
+            userSpan.textContent = customerName ? `${customerName} (${department})` : '-';
+        }
+    }
+    
+    // Update drinks list
+    const summaryDrinksList = document.getElementById('summary-drinks-list');
+    if (summaryDrinksList && selectedDrinks.length > 0) {
+        summaryDrinksList.innerHTML = selectedDrinks.map(drink => 
+            `<div class="summary-drink-item">
+                <span class="drink-name">${drink.name}</span>
+                <span class="drink-quantity">x${drink.quantity}</span>
+            </div>`
+        ).join('');
+    } else if (summaryDrinksList) {
+        summaryDrinksList.textContent = '-';
+    }
+    
+    // Update total count
+    const totalItems = selectedDrinks.reduce((sum, drink) => sum + drink.quantity, 0);
+    const summaryTotalCount = document.getElementById('summary-total-count');
+    if (summaryTotalCount) {
+        summaryTotalCount.textContent = `${totalItems} içecek`;
+    }
+    
+    // Update order time
+    const summaryTime = document.querySelector('#summary-time span');
+    if (summaryTime) {
+        const now = new Date();
+        summaryTime.textContent = now.toLocaleString('tr-TR');
+    }
+    
+    log(`Confirmation updated: ${totalItems} drinks for ${customerName}`, 'info', true);
+}
+
 // Update selected drinks summary
 function updateSelectedDrinksSummary() {
     const summaryDiv = document.getElementById('selected-drinks-summary');
@@ -606,7 +658,8 @@ function setupEventListeners() {
     if (continueBtn) {
         log('Found continue button, adding click listener', 'info', true);
         continueBtn.addEventListener('click', () => {
-            log('Continue button clicked, showing confirmation card', 'info', true);
+            log('Continue button clicked, updating confirmation and showing card', 'info', true);
+            updateOrderConfirmation();
             showCard('order-confirmation-card');
         });
     }
@@ -637,6 +690,25 @@ function setupEventListeners() {
             }
         });
     });
+    
+    // Specific back buttons with IDs
+    const backToDrinks = document.getElementById('back-to-drinks');
+    if (backToDrinks) {
+        log('Found back-to-drinks button', 'info', true);
+        backToDrinks.addEventListener('click', () => {
+            log('Back to drinks clicked', 'info', true);
+            showCard('drink-selection-card');
+        });
+    }
+    
+    const backToUserInfo = document.getElementById('back-to-user-info');
+    if (backToUserInfo) {
+        log('Found back-to-user-info button', 'info', true);
+        backToUserInfo.addEventListener('click', () => {
+            log('Back to user info clicked', 'info', true);
+            showCard('user-info-card');
+        });
+    }
     
     log('Event listeners setup complete', 'info', true);
 }
