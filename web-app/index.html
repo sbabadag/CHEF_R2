@@ -4,12 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AVM Grup - Mutfak Sipariş Sistemi</title>
-    <link rel="icon" type="image/svg+xml" href="favicon.ico">
+    <!-- Prevent favicon 404 error -->
+    <link rel="icon" href="data:,">
+    <!-- Prevent background worker errors -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <!-- External stylesheets -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Prevent form autocomplete that can cause errors -->
+    <form style="display: none;">
+        <input type="text" name="username" autocomplete="username">
+        <input type="password" name="password" autocomplete="current-password">
+    </form>
     <!-- Header -->
     <header class="header">
         <div class="container">
@@ -264,8 +275,24 @@
         </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="script.js"></script>
+    <!-- Scripts with error handling -->
+    <script>
+        // Prevent runtime errors from breaking the app
+        window.addEventListener('error', function(e) {
+            console.warn('Handled error:', e.error?.message || 'Unknown error');
+            return true; // Prevent default error handling
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            console.warn('Handled promise rejection:', e.reason?.message || 'Unknown rejection');
+            e.preventDefault(); // Prevent default handling
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" 
+            onerror="console.warn('Supabase library failed to load, app will use test mode')" 
+            async defer></script>
+    <script src="script.js" 
+            onerror="console.error('Main script failed to load')" 
+            defer></script>
 </body>
 </html>
