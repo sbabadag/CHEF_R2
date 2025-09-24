@@ -93,13 +93,18 @@ const char* password = "AVMGRUP2023";
 const char* supabase_url = "https://cfapmolnnvemqjneaher.supabase.co";
 const char* supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c";
 
-// Order structure for kitchen management
+// Order structure for multiple drink orders
 struct Order {
   String id;
-  String orderer_name;
+  String customer_name;  // Updated field name to match new schema
+  String department;     // New field for department
   String drink_type;
-  String status;  // "new", "alindi", "hazirlandi"
+  int quantity;          // New field for quantity
+  String status;         // "new", "alindi", "hazirlandi"
+  String special_instructions; // New field for special instructions
+  int priority;          // New field for priority (0=normal, 1=urgent)
   String created_at;
+  float waiting_minutes; // Calculated waiting time
   int position_y;
 };
 
@@ -225,8 +230,8 @@ void fetchOrders() {
   Serial.println("Siparisler getiriliyor...");
   
   HTTPClient http;
-  // Query for orders that are not "hazirlandi" (completed)
-  String url = String(supabase_url) + "/rest/v1/drink_orders?status=neq.hazirlandi&order=created_at.asc";
+  // Updated query for multiple drink orders - get orders that are "new" or "alindi"
+  String url = String(supabase_url) + "/rest/v1/drink_orders?or=(status.eq.new,status.eq.alindi)&order=priority.desc,created_at.asc";
   
   Serial.println("URL: " + url);
   
@@ -257,11 +262,23 @@ void fetchOrders() {
       for (JsonObject obj : array) {
         if (orderCount >= MAX_ORDERS) break;
         
+        // Parse new schema fields
         orders[orderCount].id = obj["id"].as<String>();
-        orders[orderCount].orderer_name = utf8ToLatin1(obj["orderer_name"].as<String>());
+        orders[orderCount].customer_name = utf8ToLatin1(obj["customer_name"].as<String>());
+        orders[orderCount].department = utf8ToLatin1(obj["department"].as<String>());
         orders[orderCount].drink_type = utf8ToLatin1(obj["drink_type"].as<String>());
+        orders[orderCount].quantity = obj["quantity"].as<int>();
         orders[orderCount].status = obj["status"].as<String>();
+        orders[orderCount].special_instructions = utf8ToLatin1(obj["special_instructions"].as<String>());
+        orders[orderCount].priority = obj["priority"].as<int>();
         orders[orderCount].created_at = obj["created_at"].as<String>();
+        
+        // Calculate waiting minutes if available
+        if (obj.containsKey("waiting_minutes") && !obj["waiting_minutes"].isNull()) {
+          orders[orderCount].waiting_minutes = obj["waiting_minutes"].as<float>();
+        } else {
+          orders[orderCount].waiting_minutes = 0;
+        }
         
         orderCount++;
       }
@@ -323,83 +340,167 @@ void drawScreen() {
   
   // Header
   tft.setTextColor(TFT_CYAN);
-  tft.setTextSize(3);
-  tft.setCursor(50, 5);
-  tft.print("MUTFAK SISTEMI");
+  tft.setTextSize(2);
+  tft.setCursor(20, 5);
+  tft.print("AVM MUTFAK SISTEMI");
   
-  // Order count
+  // Order count and info
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(10, 30);
+  tft.setCursor(10, 25);
   tft.print("Aktif Siparisler: ");
   tft.print(orderCount);
   
+  // Show WiFi status
+  tft.setCursor(200, 25);
+  if (WiFi.status() == WL_CONNECTED) {
+    tft.setTextColor(TFT_GREEN);
+    tft.print("WiFi: OK");
+  } else {
+    tft.setTextColor(TFT_RED);
+    tft.print("WiFi: ERR");
+  }
+  
   if (orderCount == 0) {
     tft.setTextColor(TFT_YELLOW);
-    tft.setTextSize(2);
-    tft.setCursor(80, 120);
+    tft.setTextSize(3);
+    tft.setCursor(70, 100);
     tft.print("SIPARIS YOK");
+    
+    tft.setTextColor(TFT_GREEN);
+    tft.setTextSize(1);
+    tft.setCursor(90, 140);
+    tft.print("Yeni siparisler");
+    tft.setCursor(100, 150);
+    tft.print("bekleniyor...");
     return;
   }
   
-  // Draw orders
-  int y = 45;
-  const int orderHeight = 22;
+  // Draw orders with enhanced information
+  int y = 40;
+  const int orderHeight = 28; // Increased height for more info
   
   for (int i = 0; i < orderCount; i++) {
+    if (y + orderHeight > 240) break; // Screen boundary check
+    
     orders[i].position_y = y;
     
-    // Status color
+    // Priority indicator - urgent orders get different color
     uint16_t bgColor, textColor;
-    if (orders[i].status == "new") {
-      bgColor = TFT_RED;
-      textColor = TFT_WHITE;
-    } else if (orders[i].status == "alindi") {
-      bgColor = TFT_ORANGE;
-      textColor = TFT_BLACK;
+    if (orders[i].priority > 0) { // Urgent order
+      if (orders[i].status == "new") {
+        bgColor = TFT_PURPLE; // Purple for urgent new orders
+        textColor = TFT_WHITE;
+      } else {
+        bgColor = TFT_MAGENTA; // Magenta for urgent taken orders
+        textColor = TFT_WHITE;
+      }
     } else {
-      bgColor = TFT_LIGHTGREY;
-      textColor = TFT_BLACK;
+      // Normal priority colors
+      if (orders[i].status == "new") {
+        bgColor = TFT_RED;
+        textColor = TFT_WHITE;
+      } else if (orders[i].status == "alindi") {
+        bgColor = TFT_ORANGE;
+        textColor = TFT_BLACK;
+      } else {
+        bgColor = TFT_LIGHTGREY;
+        textColor = TFT_BLACK;
+      }
     }
     
-    // Order card
+    // Order card background
     tft.fillRoundRect(5, y, 310, orderHeight, 3, bgColor);
     tft.drawRoundRect(5, y, 310, orderHeight, 3, TFT_WHITE);
     
-    // Order info
+    // Priority indicator (small triangle in corner for urgent)
+    if (orders[i].priority > 0) {
+      tft.fillTriangle(5, y, 15, y, 5, y+10, TFT_YELLOW);
+    }
+    
+    // Line 1: Customer name and department
     tft.setTextColor(textColor);
     tft.setTextSize(1);
     tft.setCursor(10, y + 3);
-    tft.print(orders[i].orderer_name);
-    tft.setCursor(10, y + 12);
-    tft.print(orders[i].drink_type);
+    String customerInfo = orders[i].customer_name;
+    if (orders[i].department.length() > 0) {
+      customerInfo += " (" + orders[i].department + ")";
+    }
+    // Limit text length to fit screen
+    if (customerInfo.length() > 25) {
+      customerInfo = customerInfo.substring(0, 22) + "...";
+    }
+    tft.print(customerInfo);
     
-    // Status button
+    // Line 2: Drink type and quantity
+    tft.setCursor(10, y + 13);
+    String drinkInfo = orders[i].drink_type;
+    if (orders[i].quantity > 1) {
+      drinkInfo += " x" + String(orders[i].quantity);
+    }
+    if (drinkInfo.length() > 20) {
+      drinkInfo = drinkInfo.substring(0, 17) + "...";
+    }
+    tft.print(drinkInfo);
+    
+    // Line 3: Special instructions if any
+    if (orders[i].special_instructions.length() > 0 && orders[i].special_instructions != "null") {
+      tft.setCursor(10, y + 22);
+      tft.setTextColor(TFT_YELLOW);
+      String instructions = orders[i].special_instructions;
+      if (instructions.length() > 18) {
+        instructions = instructions.substring(0, 15) + "...";
+      }
+      tft.print("Not: " + instructions);
+    }
+    
+    // Waiting time indicator
+    if (orders[i].waiting_minutes > 0) {
+      tft.setTextColor(TFT_WHITE);
+      tft.setCursor(200, y + 3);
+      tft.print(String((int)orders[i].waiting_minutes) + "dk");
+    }
+    
+    // Status action button
     String buttonText = "";
+    uint16_t buttonColor = TFT_GREEN;
     if (orders[i].status == "new") {
       buttonText = "ALINDI";
+      buttonColor = TFT_GREEN;
     } else if (orders[i].status == "alindi") {
-      buttonText = "HAZIRLANDI";
+      buttonText = "HAZIR";
+      buttonColor = TFT_BLUE;
     }
     
     if (buttonText != "") {
-      tft.fillRoundRect(220, y + 2, 90, 18, 2, TFT_GREEN);
-      tft.drawRoundRect(220, y + 2, 90, 18, 2, TFT_WHITE);
+      tft.fillRoundRect(240, y + 8, 65, 15, 2, buttonColor);
+      tft.drawRoundRect(240, y + 8, 65, 15, 2, TFT_WHITE);
       tft.setTextColor(TFT_WHITE);
-      tft.setCursor(235, y + 7);
+      tft.setCursor(245, y + 11);
       tft.print(buttonText);
     }
     
-    y += orderHeight + 3;
+    y += orderHeight + 2;
+  }
+  
+  // Footer with refresh info
+  if (orderCount < MAX_ORDERS) {
+    tft.setTextColor(TFT_DARKGREY);
+    tft.setTextSize(1);
+    tft.setCursor(10, 220);
+    tft.print("Son guncelleme: ");
+    tft.print((millis() - lastFetch) / 1000);
+    tft.print("s once");
   }
 }
 
 int findTouchedOrder(uint16_t x, uint16_t y) {
   for (int i = 0; i < orderCount; i++) {
     int orderY = orders[i].position_y;
+    const int orderHeight = 28; // Match the height from drawScreen
     
-    // Check if touch is on the button area
-    if (x >= 220 && x <= 310 && y >= orderY + 2 && y <= orderY + 20) {
+    // Check if touch is on the button area (updated coordinates)
+    if (x >= 240 && x <= 305 && y >= orderY + 8 && y <= orderY + 23) {
       return i;
     }
   }
@@ -431,28 +532,11 @@ void updateOrderStatus(int orderIndex, const String& newStatus) {
   if (httpCode == 200 || httpCode == 204) {
     Serial.println("Siparis durumu guncellendi: " + orders[orderIndex].id + " -> " + newStatus);
     
-    // If status is "hazirlandi", delete the order
-    if (newStatus == "hazirlandi") {
-      // Delete from database
-      HTTPClient deleteHttp;
-      WiFiClientSecure deleteClient;
-      deleteClient.setInsecure();
-      deleteHttp.begin(deleteClient, url);
-      deleteHttp.addHeader("apikey", supabase_key);
-      deleteHttp.addHeader("Authorization", "Bearer " + String(supabase_key));
-      deleteHttp.setTimeout(10000);
-      
-      int deleteCode = deleteHttp.sendRequest("DELETE");
-      if (deleteCode == 200 || deleteCode == 204) {
-        Serial.println("Siparis silindi: " + orders[orderIndex].id);
-      } else {
-        Serial.println("Silme hatasi: " + String(deleteCode));
-      }
-      deleteHttp.end();
-    }
-    
     // Update local status
     orders[orderIndex].status = newStatus;
+    
+    // If status is "hazirlandi", the order will be filtered out in next fetch
+    // No need to delete it, just let it remain in database for history
     
     // Refresh orders after a short delay
     delay(500);
@@ -462,11 +546,13 @@ void updateOrderStatus(int orderIndex, const String& newStatus) {
     Serial.println("Durum guncelleme hatasi: " + String(httpCode));
     
     // Show error on screen briefly
-    tft.fillRect(0, 220, 320, 20, TFT_RED);
+    tft.fillRect(0, 200, 320, 40, TFT_RED);
     tft.setTextColor(TFT_WHITE);
     tft.setTextSize(1);
-    tft.setCursor(10, 225);
+    tft.setCursor(10, 210);
     tft.print("Guncelleme hatasi: " + String(httpCode));
+    tft.setCursor(10, 220);
+    tft.print("Tekrar deneniyor...");
     delay(2000);
     drawScreen();
   }
@@ -475,7 +561,7 @@ void updateOrderStatus(int orderIndex, const String& newStatus) {
 }
 
 void handleTouch(uint16_t x, uint16_t y) {
-  Serial.print("Dokunma: ");
+  Serial.print("Dokunma algılandi: ");
   Serial.print(x);
   Serial.print(", ");
   Serial.println(y);
@@ -488,14 +574,23 @@ void handleTouch(uint16_t x, uint16_t y) {
     
     if (currentStatus == "new") {
       nextStatus = "alindi";
+      Serial.println("Siparis alindi: " + orders[touchedOrder].customer_name + " - " + orders[touchedOrder].drink_type);
     } else if (currentStatus == "alindi") {
       nextStatus = "hazirlandi";
+      Serial.println("Siparis hazir: " + orders[touchedOrder].customer_name + " - " + orders[touchedOrder].drink_type);
     }
     
     if (nextStatus != "") {
-      Serial.println("Durum degistiriliyor: " + orders[touchedOrder].orderer_name + " -> " + nextStatus);
+      // Visual feedback - highlight touched order
+      tft.drawRoundRect(5, orders[touchedOrder].position_y, 310, 28, 3, TFT_WHITE);
+      tft.drawRoundRect(4, orders[touchedOrder].position_y-1, 312, 30, 3, TFT_WHITE);
+      
       updateOrderStatus(touchedOrder, nextStatus);
     }
+  } else {
+    // Touch outside orders - refresh manually
+    Serial.println("Manuel yenileme");
+    fetchOrders();
   }
 }
 
@@ -504,10 +599,10 @@ void loop() {
   
   if (tft.getTouch(&x, &y)) {
     handleTouch(x, y);
-    delay(300); // Debounce
+    delay(300); // Debounce touch
   }
   
-  // Fetch orders periodically
+  // Automatic refresh every FETCH_INTERVAL
   if (millis() - lastFetch > FETCH_INTERVAL) {
     fetchOrders();
     lastFetch = millis();
