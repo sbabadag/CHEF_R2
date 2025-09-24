@@ -1,0 +1,41 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Upload CYD Code",
+			"type": "shell",
+			"command": "C:\\Users\\lenovo\\.platformio\\penv\\Scripts\\platformio.exe",
+			"args": [
+				"run",
+				"--target",
+				"upload"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Upload CYD with Buzzer",
+			"type": "shell",
+			"command": "C:\\Users\\lenovo\\.platformio\\penv\\Scripts\\platformio.exe",
+			"args": [
+				"run",
+				"--target",
+				"upload"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Upload Fixed Touch",
+			"type": "shell",
+			"command": "C:\\Users\\lenovo\\.platformio\\penv\\Scripts\\platformio.exe",
+			"args": [
+				"run",
+				"--target",
+				"upload"
+			],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

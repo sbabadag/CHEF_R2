@@ -5,7 +5,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // Configuration
 const TEST_MODE = false; // Set to true for offline testing
-const DEBUG_MODE = false; // Set to true for detailed logging
+const DEBUG_MODE = true; // Set to true for detailed logging
 
 // Global variables
 let supabase = null;
@@ -106,14 +106,19 @@ function showLoading(show = true) {
 function showCard(cardId) {
     log(`Showing card: ${cardId}`);
     
-    // Hide all cards
+    // Hide all cards by setting display to none
     const cards = document.querySelectorAll('.card');
-    cards.forEach(card => card.classList.remove('active'));
+    cards.forEach(card => {
+        card.classList.remove('active');
+        card.style.display = 'none';
+    });
     
-    // Show specific card
+    // Show specific card by setting display to block
     const targetCard = document.getElementById(cardId);
     if (targetCard) {
         targetCard.classList.add('active');
+        targetCard.style.display = 'block';
+        log(`Successfully showed card: ${cardId}`);
     } else {
         log(`Card not found: ${cardId}`, 'error');
     }
@@ -228,12 +233,16 @@ function updateSelectedDrinksSummary() {
 // Handle user info form submission
 async function handleUserInfoSubmit(event) {
     event.preventDefault();
+    log('Form submission started', 'info', true);
     
     const formData = new FormData(event.target);
     const customerName = formData.get('name')?.trim();
     const department = formData.get('department')?.trim();
     
+    log(`Form data: name="${customerName}", department="${department}"`, 'info', true);
+    
     if (!customerName || !department) {
+        log('Form validation failed - empty fields', 'error', true);
         showToast('Lütfen tüm alanları doldurun', 'error');
         return;
     }
@@ -241,10 +250,11 @@ async function handleUserInfoSubmit(event) {
     // Store user info globally
     window.currentUser = { customerName, department };
     
-    log(`User info submitted: ${customerName} - ${department}`);
+    log(`User info submitted: ${customerName} - ${department}`, 'info', true);
     showToast('Bilgiler kaydedildi', 'success');
     
     // Move to drink selection
+    log('Navigating to drink selection card', 'info', true);
     showCard('drink-selection-card');
 }
 
@@ -515,42 +525,55 @@ function resetApp() {
 
 // Setup event listeners
 function setupEventListeners() {
-    log('Setting up event listeners');
+    log('Setting up event listeners', 'info', true);
     
     // User form submission
     const userForm = document.getElementById('user-form');
     if (userForm) {
+        log('Found user form, adding submit listener', 'info', true);
         userForm.addEventListener('submit', handleUserInfoSubmit);
+    } else {
+        log('ERROR: user-form element not found!', 'error', true);
     }
     
     // Navigation buttons
     const continueBtn = document.getElementById('continue-to-confirmation');
     if (continueBtn) {
-        continueBtn.addEventListener('click', () => showCard('order-confirmation-card'));
+        log('Found continue button, adding click listener', 'info', true);
+        continueBtn.addEventListener('click', () => {
+            log('Continue button clicked, showing confirmation card', 'info', true);
+            showCard('order-confirmation-card');
+        });
     }
     
     // Confirm order button
     const confirmBtn = document.getElementById('confirm-order');
     if (confirmBtn) {
+        log('Found confirm button, adding click listener', 'info', true);
         confirmBtn.addEventListener('click', confirmOrder);
     }
     
     // Reset buttons
     const resetButtons = document.querySelectorAll('.reset-btn');
+    log(`Found ${resetButtons.length} reset buttons`, 'info', true);
     resetButtons.forEach(btn => {
         btn.addEventListener('click', resetApp);
     });
     
     // Back buttons
     const backButtons = document.querySelectorAll('.back-btn');
+    log(`Found ${backButtons.length} back buttons`, 'info', true);
     backButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
             const targetCard = e.target.dataset.target;
             if (targetCard) {
+                log(`Back button clicked, showing card: ${targetCard}`, 'info', true);
                 showCard(targetCard);
             }
         });
     });
+    
+    log('Event listeners setup complete', 'info', true);
 }
 
 // Initialize application
@@ -579,6 +602,12 @@ async function initializeApp() {
         
         // Show initial card
         showCard('user-info-card');
+        
+        // Ensure first card is visible
+        const firstCard = document.getElementById('user-info-card');
+        if (firstCard) {
+            firstCard.style.display = 'block';
+        }
         
         const mode = TEST_MODE ? 'Test Mode' : 'Production';
         log(`✅ App initialized successfully (${mode})`, 'log', true);

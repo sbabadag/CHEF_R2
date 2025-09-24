@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
+#include "config.h"
 
 class LGFX_CYD : public lgfx::LGFX_Device {
   lgfx::Panel_ILI9341 _panel_instance;
@@ -85,13 +86,16 @@ public:
 
 LGFX_CYD tft;
 
+// Buzzer configuration
+const int BUZZER_PIN = 22;
+
 // WiFi credentials
-const char* ssid = "AVM GRUP2";
-const char* password = "AVMGRUP2023";
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 // Supabase configuration - CORRECT URL AND KEY
-const char* supabase_url = "https://cfapmolnnvemqjneaher.supabase.co";
-const char* supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c";
+const char* supabase_url = SUPABASE_URL;
+const char* supabase_key = SUPABASE_ANON_KEY;
 
 // Order structure for multiple drink orders
 struct Order {
@@ -116,6 +120,14 @@ const unsigned long FETCH_INTERVAL = 15000; // Increased to 15 seconds
 int consecutiveErrors = 0;
 const int MAX_CONSECUTIVE_ERRORS = 5;
 
+// Buzzer control variables
+bool hasNewOrder = false;
+bool buzzerActive = false;
+unsigned long lastBuzzerTime = 0;
+const unsigned long BUZZER_INTERVAL = 60000; // 1 minute = 60000ms
+String lastOrderId = "";
+bool initialBuzzDone = false;
+
 // Forward declarations
 void fetchOrders();
 void drawScreen();
@@ -123,6 +135,9 @@ void handleTouch(uint16_t x, uint16_t y);
 void updateOrderStatus(int orderIndex, const String& newStatus);
 int findTouchedOrder(uint16_t x, uint16_t y);
 String utf8ToLatin1(String input);
+void buzzerBeep(int count = 1, int duration = 200, int pause = 300);
+void checkNewOrderBuzzer();
+void handlePeriodicBuzzer();
 
 // Handle Turkish characters conversion
 String utf8ToLatin1(String input) {
@@ -145,6 +160,10 @@ String utf8ToLatin1(String input) {
 void setup() {
   Serial.begin(115200);
   Serial.println("=== MUTFAK SIPARIS SISTEMI ===");
+  
+  // Initialize buzzer pin
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
   
   tft.init();
   tft.setRotation(1);  // Landscape mode 320x240
@@ -285,6 +304,9 @@ void fetchOrders() {
       
       Serial.println("Siparisler guncellendi: " + String(orderCount) + " adet");
       drawScreen();
+      
+      // Check for new orders and trigger buzzer if needed
+      checkNewOrderBuzzer();
     } else {
       Serial.println("JSON parse hatasi!");
       consecutiveErrors++;
@@ -338,170 +360,238 @@ void fetchOrders() {
 void drawScreen() {
   tft.fillScreen(TFT_BLACK);
   
-  // Header
+  // Header - smaller and more compact
   tft.setTextColor(TFT_CYAN);
-  tft.setTextSize(2);
-  tft.setCursor(20, 5);
-  tft.print("AVM MUTFAK SISTEMI");
-  
-  // Order count and info
-  tft.setTextColor(TFT_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(10, 25);
-  tft.print("Aktif Siparisler: ");
-  tft.print(orderCount);
+  tft.setCursor(10, 5);
+  tft.print("AVM MUTFAK");
   
-  // Show WiFi status
-  tft.setCursor(200, 25);
+  // Show WiFi status and order count
+  tft.setCursor(200, 5);
   if (WiFi.status() == WL_CONNECTED) {
     tft.setTextColor(TFT_GREEN);
-    tft.print("WiFi: OK");
+    tft.print("WiFi:OK");
   } else {
     tft.setTextColor(TFT_RED);
-    tft.print("WiFi: ERR");
+    tft.print("WiFi:ERR");
   }
   
+  // Show order count in corner
+  tft.setTextColor(TFT_WHITE);
+  tft.setCursor(260, 5);
+  tft.print("(" + String(orderCount) + ")");
+  
   if (orderCount == 0) {
+    // No orders - full screen message
     tft.setTextColor(TFT_YELLOW);
     tft.setTextSize(3);
-    tft.setCursor(70, 100);
-    tft.print("SIPARIS YOK");
+    tft.setCursor(70, 80);
+    tft.print("SIPARIS");
+    tft.setCursor(100, 110);
+    tft.print("YOK");
     
     tft.setTextColor(TFT_GREEN);
-    tft.setTextSize(1);
-    tft.setCursor(90, 140);
+    tft.setTextSize(2);
+    tft.setCursor(60, 160);
     tft.print("Yeni siparisler");
-    tft.setCursor(100, 150);
+    tft.setCursor(80, 180);
     tft.print("bekleniyor...");
     return;
   }
   
-  // Draw orders with enhanced information
-  int y = 40;
-  const int orderHeight = 28; // Increased height for more info
+  // Show only the LATEST order (first one) in large card format
+  Order* latestOrder = &orders[0]; // Get the most recent order
+  latestOrder->position_y = 20; // Set position for touch detection
   
-  for (int i = 0; i < orderCount; i++) {
-    if (y + orderHeight > 240) break; // Screen boundary check
-    
-    orders[i].position_y = y;
-    
-    // Priority indicator - urgent orders get different color
-    uint16_t bgColor, textColor;
-    if (orders[i].priority > 0) { // Urgent order
-      if (orders[i].status == "new") {
-        bgColor = TFT_PURPLE; // Purple for urgent new orders
-        textColor = TFT_WHITE;
-      } else {
-        bgColor = TFT_MAGENTA; // Magenta for urgent taken orders
-        textColor = TFT_WHITE;
-      }
+  // Determine colors based on status and priority
+  uint16_t bgColor, textColor, accentColor;
+  if (latestOrder->priority > 0) { // Urgent order
+    if (latestOrder->status == "new") {
+      bgColor = TFT_PURPLE;
+      textColor = TFT_WHITE;
+      accentColor = TFT_YELLOW;
     } else {
-      // Normal priority colors
-      if (orders[i].status == "new") {
-        bgColor = TFT_RED;
-        textColor = TFT_WHITE;
-      } else if (orders[i].status == "alindi") {
-        bgColor = TFT_ORANGE;
-        textColor = TFT_BLACK;
-      } else {
-        bgColor = TFT_LIGHTGREY;
-        textColor = TFT_BLACK;
-      }
+      bgColor = TFT_MAGENTA;
+      textColor = TFT_WHITE;
+      accentColor = TFT_YELLOW;
     }
-    
-    // Order card background
-    tft.fillRoundRect(5, y, 310, orderHeight, 3, bgColor);
-    tft.drawRoundRect(5, y, 310, orderHeight, 3, TFT_WHITE);
-    
-    // Priority indicator (small triangle in corner for urgent)
-    if (orders[i].priority > 0) {
-      tft.fillTriangle(5, y, 15, y, 5, y+10, TFT_YELLOW);
+  } else {
+    // Normal priority colors
+    if (latestOrder->status == "new") {
+      bgColor = TFT_RED;
+      textColor = TFT_WHITE;
+      accentColor = TFT_WHITE;
+    } else if (latestOrder->status == "alindi") {
+      bgColor = TFT_ORANGE;
+      textColor = TFT_BLACK;
+      accentColor = TFT_BLACK;
+    } else {
+      bgColor = TFT_LIGHTGREY;
+      textColor = TFT_BLACK;
+      accentColor = TFT_BLACK;
     }
-    
-    // Line 1: Customer name and department
-    tft.setTextColor(textColor);
+  }
+  
+  // Main order card - large and prominent (covers most of screen)
+  const int cardX = 10;
+  const int cardY = 25;
+  const int cardW = 300;
+  const int cardH = 180;
+  
+  tft.fillRoundRect(cardX, cardY, cardW, cardH, 8, bgColor);
+  tft.drawRoundRect(cardX, cardY, cardW, cardH, 8, accentColor);
+  tft.drawRoundRect(cardX+1, cardY+1, cardW-2, cardH-2, 7, accentColor);
+  
+  // Priority indicator (large corner badge for urgent orders)
+  if (latestOrder->priority > 0) {
+    tft.fillRoundRect(cardX + cardW - 40, cardY + 5, 35, 20, 3, TFT_YELLOW);
+    tft.setTextColor(TFT_BLACK);
     tft.setTextSize(1);
-    tft.setCursor(10, y + 3);
-    String customerInfo = orders[i].customer_name;
-    if (orders[i].department.length() > 0) {
-      customerInfo += " (" + orders[i].department + ")";
+    tft.setCursor(cardX + cardW - 35, cardY + 10);
+    tft.print("ACIL");
+  }
+  
+  // Customer name - very large
+  tft.setTextColor(textColor);
+  tft.setTextSize(3);
+  int nameY = cardY + 15;
+  tft.setCursor(cardX + 10, nameY);
+  String customerName = latestOrder->customer_name;
+  if (customerName.length() > 12) {
+    customerName = customerName.substring(0, 10) + "..";
+  }
+  tft.print(customerName);
+  
+  // Department - large
+  if (latestOrder->department.length() > 0) {
+    tft.setTextColor(accentColor);
+    tft.setTextSize(2);
+    tft.setCursor(cardX + 10, nameY + 30);
+    String dept = latestOrder->department;
+    if (dept.length() > 15) {
+      dept = dept.substring(0, 13) + "..";
     }
-    // Limit text length to fit screen
-    if (customerInfo.length() > 25) {
-      customerInfo = customerInfo.substring(0, 22) + "...";
+    tft.print(dept);
+  }
+  
+  // Drink information - very prominent
+  tft.setTextColor(textColor);
+  tft.setTextSize(2);
+  int drinkY = nameY + 60;
+  tft.setCursor(cardX + 10, drinkY);
+  String drinkInfo = latestOrder->drink_type;
+  if (latestOrder->quantity > 1) {
+    drinkInfo += " x" + String(latestOrder->quantity);
+  }
+  if (drinkInfo.length() > 18) {
+    drinkInfo = drinkInfo.substring(0, 16) + "..";
+  }
+  tft.print(drinkInfo);
+  
+  // Special instructions if any
+  if (latestOrder->special_instructions.length() > 0 && latestOrder->special_instructions != "null") {
+    tft.setTextColor(TFT_YELLOW);
+    tft.setTextSize(1);
+    tft.setCursor(cardX + 10, drinkY + 25);
+    String instructions = latestOrder->special_instructions;
+    if (instructions.length() > 30) {
+      instructions = instructions.substring(0, 27) + "...";
     }
-    tft.print(customerInfo);
+    tft.print("Not: " + instructions);
+  }
+  
+  // Waiting time indicator - prominent
+  if (latestOrder->waiting_minutes > 0) {
+    tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(2);
+    tft.setCursor(cardX + cardW - 80, drinkY);
+    tft.print(String((int)latestOrder->waiting_minutes) + "dk");
+  }
+  
+  // Large status action button - make it bigger and more prominent
+  String buttonText = "";
+  uint16_t buttonColor = TFT_GREEN;
+  if (latestOrder->status == "new") {
+    buttonText = "ALINDI";
+    buttonColor = TFT_GREEN;
+  } else if (latestOrder->status == "alindi") {
+    buttonText = "HAZIR";
+    buttonColor = TFT_BLUE;
+  }
+  
+  if (buttonText != "") {
+    // Make button larger and more prominent
+    const int btnX = cardX + 15;  // Reduced margin
+    const int btnY = cardY + cardH - 45; // More height
+    const int btnW = cardW - 30;  // Wider button
+    const int btnH = 35;  // Taller button
     
-    // Line 2: Drink type and quantity
-    tft.setCursor(10, y + 13);
-    String drinkInfo = orders[i].drink_type;
-    if (orders[i].quantity > 1) {
-      drinkInfo += " x" + String(orders[i].quantity);
-    }
-    if (drinkInfo.length() > 20) {
-      drinkInfo = drinkInfo.substring(0, 17) + "...";
-    }
-    tft.print(drinkInfo);
+    // Debug: Print button coordinates
+    Serial.println("Drawing button at: X=" + String(btnX) + "-" + String(btnX + btnW) + 
+                   ", Y=" + String(btnY) + "-" + String(btnY + btnH));
     
-    // Line 3: Special instructions if any
-    if (orders[i].special_instructions.length() > 0 && orders[i].special_instructions != "null") {
-      tft.setCursor(10, y + 22);
-      tft.setTextColor(TFT_YELLOW);
-      String instructions = orders[i].special_instructions;
-      if (instructions.length() > 18) {
-        instructions = instructions.substring(0, 15) + "...";
-      }
-      tft.print("Not: " + instructions);
-    }
+    tft.fillRoundRect(btnX, btnY, btnW, btnH, 8, buttonColor);
+    tft.drawRoundRect(btnX, btnY, btnW, btnH, 8, TFT_WHITE);
+    tft.drawRoundRect(btnX+1, btnY+1, btnW-2, btnH-2, 7, TFT_WHITE);
+    tft.drawRoundRect(btnX+2, btnY+2, btnW-4, btnH-4, 6, TFT_WHITE); // Triple border
     
-    // Waiting time indicator
-    if (orders[i].waiting_minutes > 0) {
-      tft.setTextColor(TFT_WHITE);
-      tft.setCursor(200, y + 3);
-      tft.print(String((int)orders[i].waiting_minutes) + "dk");
-    }
-    
-    // Status action button
-    String buttonText = "";
-    uint16_t buttonColor = TFT_GREEN;
-    if (orders[i].status == "new") {
-      buttonText = "ALINDI";
-      buttonColor = TFT_GREEN;
-    } else if (orders[i].status == "alindi") {
-      buttonText = "HAZIR";
-      buttonColor = TFT_BLUE;
-    }
-    
-    if (buttonText != "") {
-      tft.fillRoundRect(240, y + 8, 65, 15, 2, buttonColor);
-      tft.drawRoundRect(240, y + 8, 65, 15, 2, TFT_WHITE);
-      tft.setTextColor(TFT_WHITE);
-      tft.setCursor(245, y + 11);
-      tft.print(buttonText);
-    }
-    
-    y += orderHeight + 2;
+    tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(2);
+    int textW = buttonText.length() * 12; // Approximate text width
+    tft.setCursor(btnX + (btnW - textW) / 2, btnY + 12);
+    tft.print(buttonText);
+  }
+  
+  // Show if there are more orders waiting
+  if (orderCount > 1) {
+    tft.setTextColor(TFT_CYAN);
+    tft.setTextSize(1);
+    tft.setCursor(10, 210);
+    tft.print("+ " + String(orderCount - 1) + " daha siparis bekliyor");
   }
   
   // Footer with refresh info
-  if (orderCount < MAX_ORDERS) {
-    tft.setTextColor(TFT_DARKGREY);
-    tft.setTextSize(1);
-    tft.setCursor(10, 220);
-    tft.print("Son guncelleme: ");
-    tft.print((millis() - lastFetch) / 1000);
-    tft.print("s once");
-  }
+  tft.setTextColor(TFT_DARKGREY);
+  tft.setTextSize(1);
+  tft.setCursor(10, 225);
+  tft.print("Son guncelleme: " + String((millis() - lastFetch) / 1000) + "s once");
 }
 
 int findTouchedOrder(uint16_t x, uint16_t y) {
-  for (int i = 0; i < orderCount; i++) {
-    int orderY = orders[i].position_y;
-    const int orderHeight = 28; // Match the height from drawScreen
+  // In single card mode, we only show the first (latest) order
+  if (orderCount > 0) {
+    // Check if touch is anywhere on the main card area
+    const int cardX = 10;
+    const int cardY = 25;
+    const int cardW = 300;
+    const int cardH = 180;
     
-    // Check if touch is on the button area (updated coordinates)
-    if (x >= 240 && x <= 305 && y >= orderY + 8 && y <= orderY + 23) {
-      return i;
+    // Button coordinates - MUST match drawScreen() button positioning
+    const int btnX = cardX + 15;  // Same as in drawScreen
+    const int btnY = cardY + cardH - 45; // Same as in drawScreen
+    const int btnW = cardW - 30;  // Same as in drawScreen
+    const int btnH = 35;  // Same as in drawScreen
+    
+    // Debug: Print button coordinates and touch position
+    Serial.println("=== TOUCH DEBUG ===");
+    Serial.println("Touch at: (" + String(x) + ", " + String(y) + ")");
+    Serial.println("Button area: X=" + String(btnX) + "-" + String(btnX + btnW) + 
+                   ", Y=" + String(btnY) + "-" + String(btnY + btnH));
+    
+    // Make touch area more forgiving - expand detection zone
+    const int touchMargin = 30; // Larger margin for easier touching
+    if (x >= (btnX - touchMargin) && x <= (btnX + btnW + touchMargin) && 
+        y >= (btnY - touchMargin) && y <= (btnY + btnH + touchMargin)) {
+      Serial.println("BUTTON HIT! Returning order index 0");
+      return 0; // Return first order index (latest order)
+    } else {
+      Serial.println("Touch outside button area");
+      
+      // Also try detecting touch anywhere in the lower part of the card as fallback
+      if (y >= cardY + cardH - 80) { // Lower 80 pixels of card
+        Serial.println("FALLBACK: Touch in lower card area, accepting as button press");
+        return 0;
+      }
     }
   }
   return -1;
@@ -535,6 +625,15 @@ void updateOrderStatus(int orderIndex, const String& newStatus) {
     // Update local status
     orders[orderIndex].status = newStatus;
     
+    // Stop buzzer if order was taken (alındı) or completed
+    if (newStatus == "alindi" || newStatus == "hazirlandi") {
+      if (buzzerActive && orders[orderIndex].id == lastOrderId) {
+        Serial.println("Sipariş alındı/hazırlandı, buzzer durduruldu");
+        buzzerActive = false;
+        hasNewOrder = false;
+      }
+    }
+    
     // If status is "hazirlandi", the order will be filtered out in next fetch
     // No need to delete it, just let it remain in database for history
     
@@ -561,16 +660,27 @@ void updateOrderStatus(int orderIndex, const String& newStatus) {
 }
 
 void handleTouch(uint16_t x, uint16_t y) {
+  Serial.print("=== TOUCH EVENT ===");
   Serial.print("Dokunma algılandi: ");
   Serial.print(x);
   Serial.print(", ");
   Serial.println(y);
   
+  // Debug: Show order count and status
+  Serial.println("Order count: " + String(orderCount));
+  if (orderCount > 0) {
+    Serial.println("Latest order status: " + orders[0].status);
+    Serial.println("Latest order ID: " + orders[0].id);
+  }
+  
   int touchedOrder = findTouchedOrder(x, y);
+  Serial.println("findTouchedOrder returned: " + String(touchedOrder));
   
   if (touchedOrder >= 0) {
     String currentStatus = orders[touchedOrder].status;
     String nextStatus = "";
+    
+    Serial.println("Processing touch for order with status: " + currentStatus);
     
     if (currentStatus == "new") {
       nextStatus = "alindi";
@@ -581,16 +691,90 @@ void handleTouch(uint16_t x, uint16_t y) {
     }
     
     if (nextStatus != "") {
-      // Visual feedback - highlight touched order
-      tft.drawRoundRect(5, orders[touchedOrder].position_y, 310, 28, 3, TFT_WHITE);
-      tft.drawRoundRect(4, orders[touchedOrder].position_y-1, 312, 30, 3, TFT_WHITE);
+      Serial.println("Updating status to: " + nextStatus);
+      
+      // Visual feedback - highlight the entire card
+      const int cardX = 10;
+      const int cardY = 25;
+      const int cardW = 300;
+      const int cardH = 180;
+      
+      tft.drawRoundRect(cardX-2, cardY-2, cardW+4, cardH+4, 10, TFT_WHITE);
+      tft.drawRoundRect(cardX-1, cardY-1, cardW+2, cardH+2, 9, TFT_WHITE);
       
       updateOrderStatus(touchedOrder, nextStatus);
+    } else {
+      Serial.println("No status change needed or invalid status");
     }
   } else {
     // Touch outside orders - refresh manually
-    Serial.println("Manuel yenileme");
+    Serial.println("Touch outside button area - Manuel yenileme");
     fetchOrders();
+  }
+  Serial.println("=== END TOUCH EVENT ===");
+}
+
+// Buzzer control functions
+void buzzerBeep(int count, int duration, int pause) {
+  for (int i = 0; i < count; i++) {
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(duration);
+    digitalWrite(BUZZER_PIN, LOW);
+    if (i < count - 1) { // Don't delay after last beep
+      delay(pause);
+    }
+  }
+}
+
+void checkNewOrderBuzzer() {
+  // Check if there's a new order that needs initial buzzing
+  if (orderCount > 0 && orders[0].status == "new") {
+    String currentLatestOrderId = orders[0].id;
+    
+    // If this is a different order than the last one we processed
+    if (currentLatestOrderId != lastOrderId) {
+      Serial.println("Yeni siparis algılandi: " + currentLatestOrderId);
+      
+      // Trigger initial 3 beeps for new order
+      buzzerBeep(3, 200, 300);
+      
+      // Update tracking variables
+      lastOrderId = currentLatestOrderId;
+      initialBuzzDone = true;
+      buzzerActive = true;
+      lastBuzzerTime = millis();
+      hasNewOrder = true;
+      
+      Serial.println("İlk 3 bip tamamlandı, periyodik bip başlatıldı");
+    }
+  }
+}
+
+void handlePeriodicBuzzer() {
+  // Only buzz if we have an active new order
+  if (buzzerActive && orderCount > 0 && orders[0].status == "new") {
+    // Check if it's time for periodic beep (1 minute intervals)
+    if (millis() - lastBuzzerTime >= BUZZER_INTERVAL) {
+      Serial.println("Periyodik bip - sipariş hala yeni durumda");
+      buzzerBeep(1, 500, 0); // Single longer beep for periodic reminder
+      lastBuzzerTime = millis();
+    }
+  } else if (orderCount > 0 && orders[0].status != "new") {
+    // Order status changed, stop buzzing
+    if (buzzerActive) {
+      Serial.println("Sipariş durumu değişti, bip durduruldu");
+      buzzerActive = false;
+      hasNewOrder = false;
+    }
+  } else if (orderCount == 0) {
+    // No orders, reset buzzer state
+    if (buzzerActive) {
+      Serial.println("Sipariş kalmadı, bip durumu sıfırlandı");
+      buzzerActive = false;
+      hasNewOrder = false;
+      lastOrderId = "";
+      initialBuzzDone = false;
+    }
   }
 }
 
@@ -598,9 +782,19 @@ void loop() {
   uint16_t x, y;
   
   if (tft.getTouch(&x, &y)) {
+    // Show touch coordinates on screen for debugging
+    tft.fillRect(250, 210, 70, 25, TFT_BLACK); // Clear previous coordinates
+    tft.setTextColor(TFT_YELLOW);
+    tft.setTextSize(1);
+    tft.setCursor(250, 210);
+    tft.print("T:" + String(x) + "," + String(y));
+    
     handleTouch(x, y);
     delay(300); // Debounce touch
   }
+  
+  // Handle periodic buzzer for new orders
+  handlePeriodicBuzzer();
   
   // Automatic refresh every FETCH_INTERVAL
   if (millis() - lastFetch > FETCH_INTERVAL) {

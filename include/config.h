@@ -3,8 +3,8 @@
 
 // WiFi Configuration
 // Update these with your actual WiFi credentials
-#define WIFI_SSID "AVM GRUP2"
-#define WIFI_PASSWORD "AVMGRUP2023"
+#define WIFI_SSID "TURKSAT-KABLONET-26C6-2.4G"
+#define WIFI_PASSWORD "babadag4242"
 
 // Supabase Configuration
 // Your actual Supabase project details

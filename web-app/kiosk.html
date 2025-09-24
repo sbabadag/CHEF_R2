@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AVM Grup - Mutfak Kiosk</title>
+    <!-- Prevent favicon 404 error -->
+    <link rel="icon" href="data:,">
+    <!-- Prevent background worker errors -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <!-- External stylesheets -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="kiosk.css">
+</head>
+<body>
+    <!-- Kiosk Display Container -->
+    <div class="kiosk-container">
+        <!-- Header with minimal branding -->
+        <div class="kiosk-header">
+            <i class="fas fa-coffee header-icon"></i>
+            <h1 class="header-title">AVM Grup Mutfak</h1>
+            <div class="current-time" id="current-time"></div>
+        </div>
+
+        <!-- Latest Order Display -->
+        <div class="latest-order-container" id="latest-order-container">
+            <!-- Loading State -->
+            <div class="loading-state" id="loading-state">
+                <i class="fas fa-spinner fa-spin loading-spinner"></i>
+                <p class="loading-text">Son sipariş yükleniyor...</p>
+            </div>
+
+            <!-- No Orders State -->
+            <div class="no-orders-state" id="no-orders-state" style="display: none;">
+                <i class="fas fa-coffee-pot no-orders-icon"></i>
+                <h2 class="no-orders-title">Henüz Sipariş Yok</h2>
+                <p class="no-orders-text">İlk sipariş geldiğinde burada görünecek</p>
+            </div>
+
+            <!-- Order Display -->
+            <div class="order-display" id="order-display" style="display: none;">
+                <!-- Customer Information -->
+                <div class="customer-section">
+                    <div class="customer-header">
+                        <i class="fas fa-user customer-icon"></i>
+                        <h2 class="section-title">SON SİPARİŞ</h2>
+                    </div>
+                    <div class="customer-info">
+                        <h3 class="customer-name" id="customer-name">-</h3>
+                        <p class="customer-department" id="customer-department">-</p>
+                    </div>
+                </div>
+
+                <!-- Drinks Information -->
+                <div class="drinks-section">
+                    <div class="drinks-header">
+                        <i class="fas fa-coffee drinks-icon"></i>
+                        <h2 class="section-title">SİPARİŞ DETAYI</h2>
+                    </div>
+                    <div class="drinks-list" id="drinks-list">
+                        <!-- Drink items will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Order Status -->
+                <div class="status-section">
+                    <div class="status-indicator" id="status-indicator">
+                        <i class="fas fa-clock status-icon" id="status-icon"></i>
+                        <h2 class="status-text" id="status-text">YENİ SİPARİŞ</h2>
+                    </div>
+                </div>
+
+                <!-- Order Timestamp -->
+                <div class="timestamp-section">
+                    <div class="timestamp-info">
+                        <i class="fas fa-calendar-alt timestamp-icon"></i>
+                        <p class="timestamp-text" id="timestamp-text">-</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer with refresh info -->
+        <div class="kiosk-footer">
+            <div class="refresh-info">
+                <i class="fas fa-sync-alt refresh-icon"></i>
+                <span class="refresh-text">Otomatik yenileme: <span id="refresh-countdown">30</span>s</span>
+            </div>
+            <div class="last-update">
+                <span>Son güncelleme: <span id="last-update-time">-</span></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div class="error-toast" id="error-toast" style="display: none;">
+        <div class="error-content">
+            <i class="fas fa-exclamation-triangle error-icon"></i>
+            <span class="error-message" id="error-message">Bir hata oluştu</span>
+        </div>
+    </div>
+
+    <!-- Scripts with error handling -->
+    <script>
+        // Prevent runtime errors from breaking the app
+        window.addEventListener('error', function(e) {
+            console.warn('Handled error:', e.error?.message || 'Unknown error');
+            return true; // Prevent default error handling
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            console.warn('Handled promise rejection:', e.reason?.message || 'Unknown rejection');
+            e.preventDefault(); // Prevent default handling
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" 
+            onerror="console.warn('Supabase library failed to load, app will use test mode')" 
+            async defer></script>
+    <script src="kiosk.js" 
+            onerror="console.error('Kiosk script failed to load')" 
+            defer></script>
+</body>
+</html>
