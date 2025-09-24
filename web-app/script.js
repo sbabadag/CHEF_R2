@@ -30,8 +30,15 @@ async function initializeSupabase() {
     if (supabaseInitialized && supabase) return supabase;
     
     try {
+        // Wait for Supabase library to load
+        let retries = 0;
+        while (typeof window.supabase === 'undefined' && retries < 10) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            retries++;
+        }
+        
         if (typeof window.supabase === 'undefined') {
-            throw new Error('Supabase library not loaded');
+            throw new Error('Supabase library failed to load after 5 seconds');
         }
         
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

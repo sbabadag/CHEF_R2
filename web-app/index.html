@@ -275,24 +275,40 @@
         </div>
     </div>
 
-    <!-- Scripts with error handling -->
+    <!-- Scripts with enhanced error handling -->
     <script>
         // Prevent runtime errors from breaking the app
         window.addEventListener('error', function(e) {
-            console.warn('Handled error:', e.error?.message || 'Unknown error');
+            console.warn('Handled global error:', e.error?.message || e.message || 'Unknown error');
             return true; // Prevent default error handling
         });
         
         window.addEventListener('unhandledrejection', function(e) {
-            console.warn('Handled promise rejection:', e.reason?.message || 'Unknown rejection');
+            console.warn('Handled promise rejection:', e.reason?.message || e.reason || 'Unknown rejection');
             e.preventDefault(); // Prevent default handling
         });
+        
+        // Global flag to track library loading
+        window.supabaseLoadAttempted = false;
+        window.supabaseLoaded = false;
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" 
-            onerror="console.warn('Supabase library failed to load, app will use test mode')" 
-            async defer></script>
-    <script src="script.js" 
-            onerror="console.error('Main script failed to load')" 
-            defer></script>
+    <script>
+        // Load Supabase with enhanced error handling
+        (function() {
+            window.supabaseLoadAttempted = true;
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+            script.onload = function() {
+                window.supabaseLoaded = true;
+                console.log('✅ Supabase library loaded successfully');
+            };
+            script.onerror = function() {
+                console.warn('⚠️ Supabase library failed to load, app will use test mode');
+                window.supabaseLoaded = false;
+            };
+            document.head.appendChild(script);
+        })();
+    </script>
+    <script src="script.js" defer></script>
 </body>
 </html>
