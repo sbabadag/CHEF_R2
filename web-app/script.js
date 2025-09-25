@@ -410,8 +410,8 @@ function handleUserInfoSubmit(e) {
     log('🔄 Form submission started', 'info', true);
     
     try {
-        const nameInput = document.getElementById('customer-name');
-        const departmentInput = document.getElementById('customer-department');
+        const nameInput = document.getElementById('name');
+        const departmentInput = document.getElementById('department');
         
         if (!nameInput || !departmentInput) {
             log('❌ Form inputs not found', 'error', true);
@@ -455,7 +455,7 @@ function setupDrinkSelection() {
     });
     
     // Order button
-    const orderBtn = document.getElementById('place-order-btn');
+    const orderBtn = document.getElementById('confirm-order');
     if (orderBtn) {
         orderBtn.addEventListener('click', handlePlaceOrder);
     }
@@ -711,7 +711,7 @@ function setupDrinkSelection() {
         }
         
         // Order button
-        const orderBtn = document.getElementById('place-order-btn');
+        const orderBtn = document.getElementById('confirm-order');
         if (orderBtn) {
             orderBtn.addEventListener('click', handlePlaceOrder);
             log('Order button event listener added');
@@ -759,7 +759,7 @@ function toggleDrinkSelection(option) {
 
 function updateOrderButton() {
     try {
-        const orderBtn = document.getElementById('place-order-btn');
+        const orderBtn = document.getElementById('confirm-order');
         const totalItems = selectedDrinks.reduce((sum, drink) => sum + drink.quantity, 0);
         
         if (orderBtn) {
