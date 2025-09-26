@@ -1,854 +1,444 @@
-// AVM Grup Kitchen Order System - Clean Version with Quantity Controls// Supabase Configuration
-
-// Supabase Configurationconst SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
-
-const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c';
-
+// Supabase Configuration
+const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c';
 
 // Test mode - set to false for production, true for offline testing
-
-// Configurationconst TEST_MODE = false;
-
 const TEST_MODE = false;
 
-const DEBUG_MODE = true;// Initialize Supabase client
-
+// Initialize Supabase client
 let supabase = null;
+let supabaseInitialized = false;
 
-// Global variableslet supabaseInitialized = false;
-
-let supabase = null;
-
-let supabaseInitialized = false;// Safe console logging
-
-let selectedDrinks = [];const safeLog = (message, type = 'log') => {
-
-let currentOrderIds = [];    try {
-
-let statusCheckInterval = null;        console[type](message);
-
-let previousOrderStatus = {};    } catch (e) {
-
-let orderStatusData = {};        // Fallback if console is not available
-
+// Safe console logging
+const safeLog = (message, type = 'log') => {
+    try {
+        console[type](`[AVM Kitchen] ${message}`);
+    } catch (e) {
+        // Fallback if console is not available
     }
+};
 
-// Safe logging function};
-
-const log = (message, type = 'log', force = false) => {
-
-    if (DEBUG_MODE || force) {// Initialize Supabase with error handling
-
-        try {function initializeSupabase() {
-
-            console[type](`[AVM Kitchen] ${message}`);    if (supabaseInitialized) return supabase;
-
-        } catch (e) {    
-
-            // Fallback for environments where console is restricted    try {
-
-        }        if (typeof window.supabase !== 'undefined') {
-
-    }            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-};            supabaseInitialized = true;
-
+// Initialize Supabase with error handling
+function initializeSupabase() {
+    if (supabaseInitialized) return supabase;
+    
+    try {
+        if (typeof window.supabase !== 'undefined') {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            supabaseInitialized = true;
             safeLog('✅ Supabase client initialized successfully');
-
-// Show toast notifications            return supabase;
-
-function showToast(message, type = 'info', duration = 4000) {        } else {
-
-    log(`Toast: ${message} (${type})`, 'info');            safeLog('⚠️ Supabase library not yet loaded');
-
-                return null;
-
-    const existingToasts = document.querySelectorAll('.toast');        }
-
-    existingToasts.forEach(toast => toast.remove());    } catch (error) {
-
-            safeLog('❌ Error initializing Supabase: ' + error.message, 'error');
-
-    const toast = document.createElement('div');        return null;
-
-    toast.className = `toast toast-${type}`;    }
-
-    toast.innerHTML = `}
-
-        <div class="toast-content">
-
-            <span class="toast-icon">${getToastIcon(type)}</span>// Global variables
-
-            <span class="toast-message">${message}</span>let selectedDrinks = []; // Birden fazla içecek için array
-
-        </div>let currentOrderIds = []; // Birden fazla sipariş ID'si
-
-    `;let statusCheckInterval = null;
-
-    
-
-    document.body.appendChild(toast);// DOM Elements
-
-    const userInfoCard = document.getElementById('user-info-card');
-
-    setTimeout(() => {const drinkSelectionCard = document.getElementById('drink-selection-card');
-
-        if (toast.parentNode) {const orderConfirmationCard = document.getElementById('order-confirmation-card');
-
-            toast.remove();const successCard = document.getElementById('success-card');
-
-        }const loadingOverlay = document.getElementById('loading-overlay');
-
-    }, duration);
-
-}// Initialize app when DOM is loaded
-
-document.addEventListener('DOMContentLoaded', function() {
-
-function getToastIcon(type) {    initializeApp();
-
-    const icons = {});
-
-        'success': '✅',
-
-        'error': '❌',function initializeApp() {
-
-        'warning': '⚠️',    safeLog('🚀 Initializing AVM Kitchen Order System...');
-
-        'info': 'ℹ️'    
-
-    };    try {
-
-    return icons[type] || 'ℹ️';        // Initialize Supabase
-
-}        supabase = initializeSupabase();
-
-        
-
-// Show/hide loading overlay        // Test Supabase connection if not in test mode
-
-function showLoading(show = true) {        if (!TEST_MODE && supabase) {
-
-    const overlay = document.getElementById('loading-overlay');            testSupabaseConnection();
-
-    if (overlay) {        } else if (TEST_MODE) {
-
-        overlay.style.display = show ? 'flex' : 'none';            safeLog('🧪 Running in TEST MODE - offline functionality enabled');
-
-    }        }
-
-}        
-
-        // Initialize UI components
-
-// Card navigation        setupEventListeners();
-
-function showCard(cardId) {        setupDrinkSelection();
-
-    log(`🔄 Attempting to show card: ${cardId}`, 'info', true);        
-
-            safeLog('✅ App initialization completed');
-
-    try {        
-
-        const cards = document.querySelectorAll('.card');    } catch (error) {
-
-        cards.forEach(card => {        safeLog('❌ Error during app initialization: ' + error.message, 'error');
-
-            card.classList.remove('active');        // Fallback to test mode if initialization fails
-
-            card.style.display = 'none';        if (!TEST_MODE) {
-
-        });            safeLog('🔄 Falling back to test mode due to initialization error');
-
-                    TEST_MODE = true;
-
-        const targetCard = document.getElementById(cardId + '-card');        }
-
-        if (targetCard) {    }
-
-            targetCard.style.display = 'block';}
-
-            targetCard.classList.add('active');            console.error('Supabase client not initialized');
-
-            log(`✅ Successfully showed card: ${cardId}`, 'info', true);            showToast('Veritabanı bağlantısı kurulamadı. Test moduna geçiliyor.', 'error');
-
-                    }
-
-            if (cardId === 'drink-selection') {        
-
-                setTimeout(() => {        // Set up event listeners
-
-                    setupDrinkSelection();        setupEventListeners();
-
-                }, 100);        
-
-            }        // Show initial card
-
-        } else {        showCard('user-info');
-
-            log(`❌ Card not found: ${cardId}-card`, 'error', true);        
-
-        }        const mode = TEST_MODE ? 'Test' : 'Supabase';
-
-    } catch (error) {        console.log(`Tea Order App initialized successfully (${mode} mode)`);
-
-        log(`Error in showCard: ${error.message}`, 'error', true);        showToast(`Uygulama başlatıldı (${mode} modu)`, 'success');
-
-    }    } catch (error) {
-
-}        console.error('Error initializing app:', error);
-
-        showToast('Uygulama başlatılırken hata oluştu: ' + error.message, 'error');
-
-// User info submission    }
-
-function handleUserInfoSubmit(e) {}
-
-    e.preventDefault();
-
-    log('🔄 Form submission started', 'info', true);function setupEventListeners() {
-
-        // User info form submit
-
-    try {    const userForm = document.getElementById('user-form');
-
-        const nameInput = document.getElementById('name');    if (userForm) {
-
-        const departmentInput = document.getElementById('department');        userForm.addEventListener('submit', handleUserInfoSubmit);
-
-            }
-
-        if (!nameInput || !departmentInput) {    
-
-            log('❌ Form inputs not found', 'error', true);    // Drink selection - multiple selection support
-
-            showToast('Form hatası - sayfa yenilenecek', 'error');    const drinkOptions = document.querySelectorAll('.drink-option');
-
-            setTimeout(() => location.reload(), 2000);    drinkOptions.forEach(option => {
-
-            return;        option.addEventListener('click', (e) => {
-
-        }            // Prevent event bubbling for quantity buttons
-
-                    if (e.target.classList.contains('quantity-btn')) {
-
-        const name = nameInput.value.trim();                return;
-
-        const department = departmentInput.value.trim();            }
-
-                    toggleDrinkSelection(option);
-
-        log(`📝 Form data - Name: "${name}", Department: "${department}"`, 'info', true);        });
-
-            });
-
-        if (!name || !department) {    
-
-            log('❌ Empty fields detected', 'warn', true);    // Quantity controls
-
-            showToast('Lütfen tüm alanları doldurun', 'error');    setupQuantityControls();
-
-            return;    
-
-        }    // Navigation buttons
-
-            const continueBtn = document.getElementById('continue-to-drinks');
-
-        window.currentUser = { customerName: name, department: department };    if (continueBtn && continueBtn.type === 'button') {
-
-                continueBtn.addEventListener('click', () => {
-
-        log(`✅ User info saved: ${name} - ${department}`, 'info', true);            showCard('drink-selection');
-
-        showToast('Bilgiler kaydedildi', 'success');        });
-
-            }
-
-        log('🚀 Navigating to drink-selection card', 'info', true);    
-
-        showCard('drink-selection');    const backToUserBtn = document.getElementById('back-to-user-info');
-
-            if (backToUserBtn) {
-
-    } catch (error) {        backToUserBtn.addEventListener('click', () => {
-
-        log(`❌ Error in handleUserInfoSubmit: ${error.message}`, 'error', true);            showCard('user-info');
-
-        showToast('Form işleminde hata oluştu', 'error');        });
-
-    }    }
-
-}    
-
-    const continueToConfirmationBtn = document.getElementById('continue-to-confirmation');
-
-// Drink selection functionality    if (continueToConfirmationBtn) {
-
-function setupDrinkSelection() {        continueToConfirmationBtn.addEventListener('click', () => {
-
-    log('🍹 Setting up drink selection...', 'info', true);            updateOrderSummary();
-
-                showCard('order-confirmation');
-
-    const drinkOptions = document.querySelectorAll('.drink-option');        });
-
-    log(`Found ${drinkOptions.length} drink options`, 'info', true);    }
-
-        
-
-    if (drinkOptions.length === 0) {    const confirmBtn = document.getElementById('confirm-order');
-
-        log('❌ No drink options found! Retrying in 500ms...', 'warn', true);    if (confirmBtn) {
-
-        setTimeout(setupDrinkSelection, 500);        confirmBtn.addEventListener('click', confirmOrder);
-
-        return;    }
-
-    }    
-
-        const backToDrinksBtn = document.getElementById('back-to-drinks');
-
-    drinkOptions.forEach((option, index) => {    if (backToDrinksBtn) {
-
-        log(`Setting up drink option ${index + 1}: ${option.dataset.drink}`, 'info', true);        backToDrinksBtn.addEventListener('click', () => {
-
-                    showCard('drink-selection');
-
-        // Remove any existing listeners to avoid duplicates        });
-
-        const newOption = option.cloneNode(true);    }
-
-        option.parentNode.replaceChild(newOption, option);    
-
-            const newOrderBtn = document.getElementById('place-new-order');
-
-        newOption.addEventListener('click', (e) => {    if (newOrderBtn) {
-
-            // If clicking on quantity buttons, let them handle it        newOrderBtn.addEventListener('click', () => {
-
-            if (e.target.classList.contains('quantity-btn')) {            resetApp();
-
-                return;            showCard('user-info');
-
-            }        });
-
-                }
-
-            log(`🔥 Drink option clicked: ${newOption.dataset.drink}`, 'info', true);}
-
-            toggleDrinkSelection(newOption);
-
-        });function setupQuantityControls() {
-
-            const quantityButtons = document.querySelectorAll('.quantity-btn');
-
-        // Setup quantity control buttons for this option    quantityButtons.forEach(btn => {
-
-        const plusBtn = newOption.querySelector('.quantity-btn.plus');        btn.addEventListener('click', (e) => {
-
-        const minusBtn = newOption.querySelector('.quantity-btn.minus');            e.stopPropagation(); // Prevent drink selection toggle
-
-                    const drinkOption = btn.closest('.drink-option');
-
-        if (plusBtn) {            const quantitySpan = drinkOption.querySelector('.quantity');
-
-            plusBtn.addEventListener('click', (e) => {            const isPlus = btn.classList.contains('plus');
-
-                e.stopPropagation();            let currentQuantity = parseInt(quantitySpan.textContent);
-
-                log(`Plus button clicked for ${newOption.dataset.drink}`, 'info', true);            
-
-                adjustQuantity(newOption, 1);            if (isPlus) {
-
-            });                currentQuantity++;
-
-        }            } else if (currentQuantity > 1) {
-
-                        currentQuantity--;
-
-        if (minusBtn) {            } else if (currentQuantity === 1) {
-
-            minusBtn.addEventListener('click', (e) => {                // If quantity becomes 0, deselect the drink
-
-                e.stopPropagation();                toggleDrinkSelection(drinkOption);
-
-                log(`Minus button clicked for ${newOption.dataset.drink}`, 'info', true);                return;
-
-                adjustQuantity(newOption, -1);            }
-
-            });            
-
-        }            quantitySpan.textContent = currentQuantity;
-
-    });            updateSelectedDrink(drinkOption, currentQuantity);
-
-                updateSelectedDrinksSummary();
-
-    const orderBtn = document.getElementById('place-order-btn');        });
-
-    if (orderBtn) {    });
-
-        log('✅ Order button found and configured', 'info', true);}
-
-        orderBtn.addEventListener('click', handlePlaceOrder);
-
-    } else {function toggleDrinkSelection(drinkElement) {
-
-        log('❌ Order button not found', 'warn', true);    const drinkName = drinkElement.dataset.drink;
-
-    }    const quantityControls = drinkElement.querySelector('.quantity-controls');
-
-        const quantitySpan = drinkElement.querySelector('.quantity');
-
-    log('✅ Drink selection setup complete', 'info', true);    
-
-}    if (drinkElement.classList.contains('selected')) {
-
-        // Deselect drink
-
-function toggleDrinkSelection(option) {        drinkElement.classList.remove('selected');
-
-    log(`🔥 toggleDrinkSelection called for: ${option.dataset.drink}`, 'info', true);        quantityControls.style.display = 'none';
-
-            
-
-    const drinkName = option.dataset.drink;        // Remove from selectedDrinks array
-
-    const quantityElement = option.querySelector('.quantity');        selectedDrinks = selectedDrinks.filter(drink => drink.name !== drinkName);
-
+            return supabase;
         } else {
-
-    if (!quantityElement) {        // Select drink
-
-        log('❌ Quantity element not found!', 'error', true);        drinkElement.classList.add('selected');
-
-        return;        quantityControls.style.display = 'flex';
-
-    }        quantitySpan.textContent = '1';
-
-            
-
-    let currentQuantity = parseInt(quantityElement.textContent) || 0;        // Add to selectedDrinks array
-
-    log(`Current quantity for ${drinkName}: ${currentQuantity}`, 'info', true);        const drinkData = {
-
-                name: drinkName,
-
-    if (option.classList.contains('selected')) {            icon: drinkElement.querySelector('i').className,
-
-        log(`${drinkName} is already selected. Use +/- buttons to adjust quantity.`, 'info', true);            description: drinkElement.querySelector('p').textContent,
-
-        return;            quantity: 1
-
-    } else {        };
-
-        currentQuantity = 1;        selectedDrinks.push(drinkData);
-
-        log(`Selecting ${drinkName}`, 'info', true);    }
-
-        option.classList.add('selected');    
-
-        quantityElement.textContent = currentQuantity;    updateSelectedDrinksSummary();
-
+            safeLog('⚠️ Supabase library not yet loaded');
+            return null;
         }
+    } catch (error) {
+        safeLog('❌ Error initializing Supabase: ' + error.message, 'error');
+        return null;
+    }
+}
 
-        const quantityControls = option.querySelector('.quantity-controls');
+// Global variables
+let selectedDrinks = []; // Birden fazla içecek için array
+let currentOrderIds = []; // Birden fazla sipariş ID'si
+let statusCheckInterval = null;
 
-        if (quantityControls) {function updateSelectedDrink(drinkElement, quantity) {
+// DOM Elements
+const userInfoCard = document.getElementById('user-info-card');
+const drinkSelectionCard = document.getElementById('drink-selection-card');
+const orderConfirmationCard = document.getElementById('order-confirmation-card');
+const successCard = document.getElementById('success-card');
+const loadingOverlay = document.getElementById('loading-overlay');
 
-            quantityControls.style.display = 'flex';    const drinkName = drinkElement.dataset.drink;
+// Initialize app when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+});
 
-            log(`Shown quantity controls for ${drinkName}`, 'info', true);    const existingDrink = selectedDrinks.find(drink => drink.name === drinkName);
+function initializeApp() {
+    safeLog('🚀 Initializing AVM Kitchen Order System...');
+    
+    try {
+        // Initialize Supabase
+        supabase = initializeSupabase();
+        
+        // Test Supabase connection if not in test mode
+        if (!TEST_MODE && supabase) {
+            testSupabaseConnection();
+        } else if (TEST_MODE) {
+            safeLog('🧪 Running in TEST MODE - offline functionality enabled');
+        }
+        
+        // Initialize UI components
+        setupEventListeners();
+        setupDrinkSelection();
+        
+        safeLog('✅ App initialization completed');
+        
+    } catch (error) {
+        safeLog('❌ Error during app initialization: ' + error.message, 'error');
+        // Fallback to test mode if initialization fails
+        if (!TEST_MODE) {
+            safeLog('🔄 Falling back to test mode due to initialization error');
+            TEST_MODE = true;
+        }
+    }
+}
+            console.error('Supabase client not initialized');
+            showToast('Veritabanı bağlantısı kurulamadı. Test moduna geçiliyor.', 'error');
+        }
+        
+        // Set up event listeners
+        setupEventListeners();
+        
+        // Show initial card
+        showCard('user-info');
+        
+        const mode = TEST_MODE ? 'Test' : 'Supabase';
+        console.log(`Tea Order App initialized successfully (${mode} mode)`);
+        showToast(`Uygulama başlatıldı (${mode} modu)`, 'success');
+    } catch (error) {
+        console.error('Error initializing app:', error);
+        showToast('Uygulama başlatılırken hata oluştu: ' + error.message, 'error');
+    }
+}
 
-        } else {    
-
-            log(`❌ Quantity controls not found for ${drinkName}`, 'error', true);    if (existingDrink) {
-
-        }        existingDrink.quantity = quantity;
-
+function setupEventListeners() {
+    // User info form submit
+    const userForm = document.getElementById('user-form');
+    if (userForm) {
+        userForm.addEventListener('submit', handleUserInfoSubmit);
+    }
+    
+    // Drink selection - multiple selection support
+    const drinkOptions = document.querySelectorAll('.drink-option');
+    drinkOptions.forEach(option => {
+        option.addEventListener('click', (e) => {
+            // Prevent event bubbling for quantity buttons
+            if (e.target.classList.contains('quantity-btn')) {
+                return;
             }
-
-        selectedDrinks.push({ name: drinkName, quantity: currentQuantity });}
-
-        log(`✅ Added ${drinkName} to selection`, 'info', true);
-
-    }function updateSelectedDrinksSummary() {
-
-        const summaryDiv = document.getElementById('selected-drinks-summary');
-
-    log(`Total selected drinks: ${selectedDrinks.length}`, 'info', true);    const listDiv = document.getElementById('selected-drinks-list');
-
-    updateOrderButton();    const totalCountSpan = document.getElementById('total-count');
-
-}    const continueBtn = document.getElementById('continue-to-confirmation');
-
+            toggleDrinkSelection(option);
+        });
+    });
     
+    // Quantity controls
+    setupQuantityControls();
+    
+    // Navigation buttons
+    const continueBtn = document.getElementById('continue-to-drinks');
+    if (continueBtn && continueBtn.type === 'button') {
+        continueBtn.addEventListener('click', () => {
+            showCard('drink-selection');
+        });
+    }
+    
+    const backToUserBtn = document.getElementById('back-to-user-info');
+    if (backToUserBtn) {
+        backToUserBtn.addEventListener('click', () => {
+            showCard('user-info');
+        });
+    }
+    
+    const continueToConfirmationBtn = document.getElementById('continue-to-confirmation');
+    if (continueToConfirmationBtn) {
+        continueToConfirmationBtn.addEventListener('click', () => {
+            updateOrderSummary();
+            showCard('order-confirmation');
+        });
+    }
+    
+    const confirmBtn = document.getElementById('confirm-order');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', confirmOrder);
+    }
+    
+    const backToDrinksBtn = document.getElementById('back-to-drinks');
+    if (backToDrinksBtn) {
+        backToDrinksBtn.addEventListener('click', () => {
+            showCard('drink-selection');
+        });
+    }
+    
+    const newOrderBtn = document.getElementById('place-new-order');
+    if (newOrderBtn) {
+        newOrderBtn.addEventListener('click', () => {
+            resetApp();
+            showCard('user-info');
+        });
+    }
+}
 
-// Adjust quantity using + and - buttons    if (selectedDrinks.length === 0) {
+function setupQuantityControls() {
+    safeLog('🍹 Setting up quantity controls...', 'log');
+    const quantityButtons = document.querySelectorAll('.quantity-btn');
+    safeLog(`Found ${quantityButtons.length} quantity buttons`, 'log');
+    
+    quantityButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            safeLog(`🔥 Quantity button clicked: ${btn.classList.contains('plus') ? 'plus' : 'minus'}`, 'log');
+            e.stopPropagation(); // Prevent drink selection toggle
+            const drinkOption = btn.closest('.drink-option');
+            const quantitySpan = drinkOption.querySelector('.quantity');
+            const isPlus = btn.classList.contains('plus');
+            let currentQuantity = parseInt(quantitySpan.textContent);
+            
+            safeLog(`Current quantity for ${drinkOption.dataset.drink}: ${currentQuantity}`, 'log');
+            
+            if (isPlus) {
+                currentQuantity++;
+            } else if (currentQuantity > 1) {
+                currentQuantity--;
+            } else if (currentQuantity === 1) {
+                // If quantity becomes 0, deselect the drink
+                safeLog(`Deselecting ${drinkOption.dataset.drink} (quantity = 0)`, 'log');
+                toggleDrinkSelection(drinkOption);
+                return;
+            }
+            
+            quantitySpan.textContent = currentQuantity;
+            updateSelectedDrink(drinkOption, currentQuantity);
+            updateSelectedDrinksSummary();
+            safeLog(`Updated quantity for ${drinkOption.dataset.drink} to: ${currentQuantity}`, 'log');
+        });
+    });
+    
+    safeLog('✅ Quantity controls setup complete', 'log');
+}
 
-function adjustQuantity(option, change) {        summaryDiv.style.display = 'none';
-
-    const drinkName = option.dataset.drink;        continueBtn.style.display = 'none';
-
-    const quantityElement = option.querySelector('.quantity');        return;
-
-    let currentQuantity = parseInt(quantityElement.textContent) || 0;    }
-
+function toggleDrinkSelection(drinkElement) {
+    const drinkName = drinkElement.dataset.drink;
+    safeLog(`🔥 toggleDrinkSelection called for: ${drinkName}`, 'log');
+    
+    const quantityControls = drinkElement.querySelector('.quantity-controls');
+    const quantitySpan = drinkElement.querySelector('.quantity');
+    
+    if (drinkElement.classList.contains('selected')) {
+        // Deselect drink
+        safeLog(`Deselecting ${drinkName}`, 'log');
+        drinkElement.classList.remove('selected');
+        quantityControls.style.display = 'none';
         
-
-    log(`Adjusting quantity for ${drinkName}: ${currentQuantity} ${change > 0 ? '+' : ''}${change}`, 'info', true);    summaryDiv.style.display = 'block';
-
-        continueBtn.style.display = 'inline-flex';
-
-    const newQuantity = currentQuantity + change;    
-
-        // Clear existing list
-
-    if (newQuantity <= 0) {    listDiv.innerHTML = '';
-
-        option.classList.remove('selected');    
-
-        quantityElement.textContent = '0';    // Add selected drinks to list
-
-            let totalCount = 0;
-
-        const quantityControls = option.querySelector('.quantity-controls');    selectedDrinks.forEach(drink => {
-
-        if (quantityControls) {        totalCount += drink.quantity;
-
-            quantityControls.style.display = 'none';        
-
-        }        const drinkItem = document.createElement('div');
-
-                drinkItem.className = 'selected-drink-item';
-
-        selectedDrinks = selectedDrinks.filter(drink => drink.name !== drinkName);        drinkItem.innerHTML = `
-
-        log(`❌ Removed ${drinkName} from selection (quantity = 0)`, 'info', true);            <i class="${drink.icon}"></i>
-
-                    <span>${drink.name}</span>
-
-    } else if (newQuantity === 1 && currentQuantity === 0) {            <div class="selected-drink-quantity">${drink.quantity}</div>
-
-        option.classList.add('selected');        `;
-
-        quantityElement.textContent = '1';        listDiv.appendChild(drinkItem);
-
-            });
-
-        const quantityControls = option.querySelector('.quantity-controls');    
-
-        if (quantityControls) {    totalCountSpan.textContent = totalCount;
-
-            quantityControls.style.display = 'flex';}
-
-        }
-
-        function handleUserInfoSubmit(e) {
-
-        selectedDrinks.push({ name: drinkName, quantity: 1 });    e.preventDefault();
-
-        log(`✅ Added ${drinkName} to selection`, 'info', true);    
-
-            const formData = new FormData(e.target);
-
-    } else if (newQuantity > 0) {    const userData = {
-
-        quantityElement.textContent = newQuantity;        name: formData.get('name'),
-
-                department: formData.get('department')
-
-        const drink = selectedDrinks.find(d => d.name === drinkName);    };
-
-        if (drink) {    
-
-            drink.quantity = newQuantity;    // Store user data
-
-        }    sessionStorage.setItem('userData', JSON.stringify(userData));
-
-        log(`📝 Updated ${drinkName} quantity to ${newQuantity}`, 'info', true);    
-
-    }    // Update header with user info
-
-        updateHeaderUserInfo(userData);
-
-    updateOrderButton();    
-
-}    // Show drink selection
-
-    showCard('drink-selection');
-
-function updateOrderButton() {}
-
-    const orderBtn = document.getElementById('place-order-btn');
-
-    const totalItems = selectedDrinks.reduce((sum, drink) => sum + drink.quantity, 0);function updateHeaderUserInfo(userData) {
-
-        const userInfoElement = document.querySelector('.user-info');
-
-    if (orderBtn) {    userInfoElement.innerHTML = `
-
-        if (totalItems > 0) {        <i class="fas fa-user"></i>
-
-            orderBtn.disabled = false;        <span>${userData.name} - ${userData.department}</span>
-
-            orderBtn.textContent = `Sipariş Ver (${totalItems} adet)`;    `;
-
-        } else {}
-
-            orderBtn.disabled = true;
-
-            orderBtn.textContent = 'İçecek Seçin';async function testSupabaseConnection() {
-
-        }    try {
-
-    }        console.log('Testing Supabase connection...');
-
-}        
-
-        // Simple test query to check connection and API key
-
-async function handlePlaceOrder() {        const { data, error } = await supabase
-
-    if (selectedDrinks.length === 0) {            .from('drink_orders')
-
-        showToast('Lütfen en az bir içecek seçin', 'error');            .select('count(*)', { count: 'exact' })
-
-        return;            .limit(1);
-
-    }        
-
-            if (error) {
-
-    if (!window.currentUser) {            console.error('Supabase connection test failed:', error);
-
-        showToast('Kullanıcı bilgileri bulunamadı', 'error');            showToast(`Supabase bağlantı hatası: ${error.message}`, 'error');
-
-        return;            
-
-    }            // Automatically switch to test mode if connection fails
-
-                if (error.message.includes('Invalid API key') || error.message.includes('401')) {
-
-    try {                console.log('Switching to test mode due to API key error');
-
-        showLoading(true);                showToast('API anahtarı geçersiz. Test moduna geçiliyor.', 'error');
-
-                    }
-
-        showCard('order-confirmation');        } else {
-
-        updateOrderSummary();            console.log('Supabase connection successful');
-
-                    showToast('Veritabanı bağlantısı başarılı', 'success');
-
-        showToast('Sipariş başarıyla gönderildi!', 'success');        }
-
-            } catch (error) {
-
-    } catch (error) {        console.error('Supabase connection test error:', error);
-
-        log(`Order creation error: ${error.message}`, 'error');        showToast('Bağlantı testi hatası: ' + error.message, 'error');
-
-        showToast(`Sipariş oluşturulurken hata: ${error.message}`, 'error');    }
-
-    } finally {}
-
-        showLoading(false);
-
-    }function selectDrink(drinkElement) {
-
-}    // Remove previous selection
-
-    document.querySelectorAll('.drink-option').forEach(option => {
-
-function updateOrderSummary() {        option.classList.remove('selected');
-
-    const orderSummary = document.getElementById('order-summary');    });
-
-    if (!orderSummary) return;    
-
-        // Add selection to clicked drink
-
-    const { customerName, department } = window.currentUser || {};    drinkElement.classList.add('selected');
-
-    const totalItems = selectedDrinks.reduce((sum, drink) => sum + drink.quantity, 0);    
-
-        // Store selected drink
-
-    orderSummary.innerHTML = `    selectedDrink = {
-
-        <div class="order-header">        name: drinkElement.dataset.drink,
-
-            <h3>Sipariş Özeti</h3>        icon: drinkElement.querySelector('i').className,
-
-            <div class="customer-info">        description: drinkElement.querySelector('p').textContent
-
-                <strong>${customerName}</strong> - ${department}    };
-
-            </div>    
-
-        </div>    // Update order summary
-
-        <div class="order-items">    updateOrderSummary();
-
-            ${selectedDrinks.map(drink => `    
-
-                <div class="order-item">    // Show confirmation card
-
-                    <span class="item-name">${drink.name}</span>    showCard('order-confirmation');
-
-                    <span class="item-quantity">x${drink.quantity}</span>}
-
-                </div>
-
-            `).join('')}function updateOrderSummary() {
-
-        </div>    if (!selectedDrinks || selectedDrinks.length === 0) return;
-
-        <div class="order-footer">    
-
-            <p><strong>Toplam: ${totalItems} adet içecek</strong></p>    const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
-
-        </div>    
-
-    `;    // Update user info
-
-}    document.getElementById('summary-user').innerHTML = `
-
-        <strong>${userData.name}</strong>
-
-// Setup event listeners        <span>${userData.department} Departmanı</span>
-
-function setupEventListeners() {    `;
-
-    try {    
-
-        const userForm = document.getElementById('user-form');    // Update drinks list
-
-        if (userForm) {    const drinksList = document.getElementById('summary-drinks-list');
-
-            userForm.addEventListener('submit', handleUserInfoSubmit);    drinksList.innerHTML = '';
-
-            log('✅ User form event listener added', 'info', true);    
-
-        } else {    let totalCount = 0;
-
-            log('❌ User form not found', 'warn', true);    selectedDrinks.forEach(drink => {
-
-        }        totalCount += drink.quantity;
-
-                
-
-    } catch (error) {        const drinkItem = document.createElement('div');
-
-        log(`Error setting up event listeners: ${error.message}`, 'error');        drinkItem.className = 'summary-drink-item';
-
-    }        drinkItem.innerHTML = `
-
-}            <div class="summary-drink-info">
-
-                <i class="${drink.icon}"></i>
-
-// Initialize app                <span>${drink.name}</span>
-
-async function initializeApp() {            </div>
-
-    log('🚀 Initializing AVM Kitchen Order System...', 'info', true);            <div class="summary-drink-quantity">${drink.quantity}x</div>
-
-            `;
-
-    try {        drinksList.appendChild(drinkItem);
-
-        showLoading(true);    });
-
-            
-
-        setupEventListeners();    // Update total
-
-        showCard('user-info');    document.getElementById('summary-total-count').textContent = `${totalCount} içecek`;
-
-            
-
-        log(`✅ App initialized successfully`, 'log', true);    // Update time
-
-        showToast(`Sistem hazır - İçecek sipariş sistemi aktif`, 'success');    const now = new Date();
-
-            document.getElementById('summary-time').innerHTML = `
-
-    } catch (error) {        <strong>Sipariş Zamanı</strong>
-
-        log(`❌ App initialization failed: ${error.message}`, 'error', true);        <span>${now.toLocaleDateString('tr-TR')} ${now.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'})}</span>
-
-        showToast(`Sistem başlatılamadı: ${error.message}`, 'error');    `;
-
-    } finally {}
-
-        showLoading(false);
-
-    }async function confirmOrder() {
-
-}    const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
-
+        // Remove from selectedDrinks array
+        selectedDrinks = selectedDrinks.filter(drink => drink.name !== drinkName);
+    } else {
+        // Select drink
+        safeLog(`Selecting ${drinkName}`, 'log');
+        drinkElement.classList.add('selected');
+        quantityControls.style.display = 'flex';
+        quantitySpan.textContent = '1';
+        
+        // Add to selectedDrinks array
+        const drinkData = {
+            name: drinkName,
+            icon: drinkElement.querySelector('i').className,
+            description: drinkElement.querySelector('p').textContent,
+            quantity: 1
+        };
+        selectedDrinks.push(drinkData);
+    }
     
+    updateSelectedDrinksSummary();
+    safeLog(`Selected drinks count: ${selectedDrinks.length}`, 'log');
+}
 
-// Initialize when DOM is ready    if (!userData.name || !userData.department || !selectedDrinks || selectedDrinks.length === 0) {
+function updateSelectedDrink(drinkElement, quantity) {
+    const drinkName = drinkElement.dataset.drink;
+    const existingDrink = selectedDrinks.find(drink => drink.name === drinkName);
+    
+    if (existingDrink) {
+        existingDrink.quantity = quantity;
+    }
+}
 
-document.addEventListener('DOMContentLoaded', initializeApp);        showToast('Lütfen tüm bilgileri doldurun!', 'error');
-
+function updateSelectedDrinksSummary() {
+    const summaryDiv = document.getElementById('selected-drinks-summary');
+    const listDiv = document.getElementById('selected-drinks-list');
+    const totalCountSpan = document.getElementById('total-count');
+    const continueBtn = document.getElementById('continue-to-confirmation');
+    
+    if (selectedDrinks.length === 0) {
+        summaryDiv.style.display = 'none';
+        continueBtn.style.display = 'none';
         return;
-
-// Add global test functions for debugging    }
-
-window.addEventListener('load', () => {    
-
-    log('🎉 Kitchen Order System Ready!', 'info', true);    showLoading('Siparişler gönderiliyor...');
-
+    }
+    
+    summaryDiv.style.display = 'block';
+    continueBtn.style.display = 'inline-flex';
+    
+    // Clear existing list
+    listDiv.innerHTML = '';
+    
+    // Add selected drinks to list
+    let totalCount = 0;
+    selectedDrinks.forEach(drink => {
+        totalCount += drink.quantity;
         
+        const drinkItem = document.createElement('div');
+        drinkItem.className = 'selected-drink-item';
+        drinkItem.innerHTML = `
+            <i class="${drink.icon}"></i>
+            <span>${drink.name}</span>
+            <div class="selected-drink-quantity">${drink.quantity}</div>
+        `;
+        listDiv.appendChild(drinkItem);
+    });
+    
+    totalCountSpan.textContent = totalCount;
+}
 
-    window.testDrinkButtons = function() {    try {
+function handleUserInfoSubmit(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const userData = {
+        name: formData.get('name'),
+        department: formData.get('department')
+    };
+    
+    // Store user data
+    sessionStorage.setItem('userData', JSON.stringify(userData));
+    
+    // Update header with user info
+    updateHeaderUserInfo(userData);
+    
+    // Show drink selection
+    showCard('drink-selection');
+}
 
-        log('🧪 Manual drink button test started...', 'info', true);        let useTestMode = TEST_MODE || !supabase;
+function updateHeaderUserInfo(userData) {
+    const userInfoElement = document.querySelector('.user-info');
+    userInfoElement.innerHTML = `
+        <i class="fas fa-user"></i>
+        <span>${userData.name} - ${userData.department}</span>
+    `;
+}
 
-        const drinkOptions = document.querySelectorAll('.drink-option');        currentOrderIds = []; // Reset order IDs
+async function testSupabaseConnection() {
+    try {
+        console.log('Testing Supabase connection...');
+        
+        // Simple test query to check connection and API key
+        const { data, error } = await supabase
+            .from('drink_orders')
+            .select('count(*)', { count: 'exact' })
+            .limit(1);
+        
+        if (error) {
+            console.error('Supabase connection test failed:', error);
+            showToast(`Supabase bağlantı hatası: ${error.message}`, 'error');
+            
+            // Automatically switch to test mode if connection fails
+            if (error.message.includes('Invalid API key') || error.message.includes('401')) {
+                console.log('Switching to test mode due to API key error');
+                showToast('API anahtarı geçersiz. Test moduna geçiliyor.', 'error');
+            }
+        } else {
+            console.log('Supabase connection successful');
+            showToast('Veritabanı bağlantısı başarılı', 'success');
+        }
+    } catch (error) {
+        console.error('Supabase connection test error:', error);
+        showToast('Bağlantı testi hatası: ' + error.message, 'error');
+    }
+}
 
-        log(`Found ${drinkOptions.length} drink options`, 'info', true);        
+function selectDrink(drinkElement) {
+    // Remove previous selection
+    document.querySelectorAll('.drink-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    // Add selection to clicked drink
+    drinkElement.classList.add('selected');
+    
+    // Store selected drink
+    selectedDrink = {
+        name: drinkElement.dataset.drink,
+        icon: drinkElement.querySelector('i').className,
+        description: drinkElement.querySelector('p').textContent
+    };
+    
+    // Update order summary
+    updateOrderSummary();
+    
+    // Show confirmation card
+    showCard('order-confirmation');
+}
 
-                if (!TEST_MODE && supabase) {
+function updateOrderSummary() {
+    if (!selectedDrinks || selectedDrinks.length === 0) return;
+    
+    const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
+    
+    // Update user info
+    document.getElementById('summary-user').innerHTML = `
+        <strong>${userData.name}</strong>
+        <span>${userData.department} Departmanı</span>
+    `;
+    
+    // Update drinks list
+    const drinksList = document.getElementById('summary-drinks-list');
+    drinksList.innerHTML = '';
+    
+    let totalCount = 0;
+    selectedDrinks.forEach(drink => {
+        totalCount += drink.quantity;
+        
+        const drinkItem = document.createElement('div');
+        drinkItem.className = 'summary-drink-item';
+        drinkItem.innerHTML = `
+            <div class="summary-drink-info">
+                <i class="${drink.icon}"></i>
+                <span>${drink.name}</span>
+            </div>
+            <div class="summary-drink-quantity">${drink.quantity}x</div>
+        `;
+        drinksList.appendChild(drinkItem);
+    });
+    
+    // Update total
+    document.getElementById('summary-total-count').textContent = `${totalCount} içecek`;
+    
+    // Update time
+    const now = new Date();
+    document.getElementById('summary-time').innerHTML = `
+        <strong>Sipariş Zamanı</strong>
+        <span>${now.toLocaleDateString('tr-TR')} ${now.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'})}</span>
+    `;
+}
 
-        if (drinkOptions.length > 0) {            // Try real mode first - create separate order for each drink
-
-            const firstDrink = drinkOptions[0];            try {
-
-            log(`Testing first drink: ${firstDrink.dataset.drink}`, 'info', true);                const orderPromises = [];
-
-            firstDrink.click();                
-
-        } else {                selectedDrinks.forEach(drink => {
-
-            log('❌ No drink options found for testing', 'error', true);                    // Create multiple orders if quantity > 1
-
-        }                    for (let i = 0; i < drink.quantity; i++) {
-
-    };                        orderPromises.push(
-
-                                supabase
-
-    window.manualSetupDrinks = function() {                                .from('drink_orders')
-
-        log('🔧 Manual setup of drink selection...', 'info', true);                                .insert([
-
-        setupDrinkSelection();                                    {
-
-    };                                        customer_name: userData.name,
-
-                                            department: userData.department,
-
-    log('✅ Global test functions added: testDrinkButtons(), manualSetupDrinks()', 'info', true);                                        drink_type: drink.name,
-
-});                                        status: 'new',
+async function confirmOrder() {
+    const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
+    
+    if (!userData.name || !userData.department || !selectedDrinks || selectedDrinks.length === 0) {
+        showToast('Lütfen tüm bilgileri doldurun!', 'error');
+        return;
+    }
+    
+    showLoading('Siparişler gönderiliyor...');
+    
+    try {
+        let useTestMode = TEST_MODE || !supabase;
+        currentOrderIds = []; // Reset order IDs
+        
+        if (!TEST_MODE && supabase) {
+            // Try real mode first - create separate order for each drink
+            try {
+                const orderPromises = [];
+                
+                selectedDrinks.forEach(drink => {
+                    // Create multiple orders if quantity > 1
+                    for (let i = 0; i < drink.quantity; i++) {
+                        orderPromises.push(
+                            supabase
+                                .from('drink_orders')
+                                .insert([
+                                    {
+                                        customer_name: userData.name,
+                                        department: userData.department,
+                                        drink_type: drink.name,
+                                        status: 'new',
                                         created_at: new Date().toISOString()
                                     }
                                 ])
