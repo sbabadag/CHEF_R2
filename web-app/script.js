@@ -84,24 +84,6 @@ function initializeApp() {
         }
     }
 }
-            console.error('Supabase client not initialized');
-            showToast('Veritabanı bağlantısı kurulamadı. Test moduna geçiliyor.', 'error');
-        }
-        
-        // Set up event listeners
-        setupEventListeners();
-        
-        // Show initial card
-        showCard('user-info');
-        
-        const mode = TEST_MODE ? 'Test' : 'Supabase';
-        console.log(`Tea Order App initialized successfully (${mode} mode)`);
-        showToast(`Uygulama başlatıldı (${mode} modu)`, 'success');
-    } catch (error) {
-        console.error('Error initializing app:', error);
-        showToast('Uygulama başlatılırken hata oluştu: ' + error.message, 'error');
-    }
-}
 
 function setupEventListeners() {
     // User info form submit
@@ -539,101 +521,6 @@ async function confirmOrder() {
         hideLoading();
         console.error('Error creating orders:', error);
         showToast('Siparişler oluşturulurken bir hata oluştu: ' + error.message, 'error');
-    }
-}
-    
-    try {
-        let useTestMode = TEST_MODE || !supabase;
-        
-        if (!TEST_MODE && supabase) {
-            // Try real mode first
-            try {
-                const { data, error } = await supabase
-                    .from('drink_orders')
-                    .insert([
-                        {
-                            customer_name: userData.name,
-                            department: userData.department,
-                            drink_type: selectedDrink.name,
-                            status: 'new',
-                            created_at: new Date().toISOString()
-                        }
-                    ])
-                    .select();
-                
-                if (error) {
-                    console.error('Supabase error:', error);
-                    
-                    // Switch to test mode if API key is invalid
-                    if (error.message.includes('Invalid API key') || 
-                        error.message.includes('401') || 
-                        error.message.includes('authentication')) {
-                        console.log('API key error detected, switching to test mode');
-                        showToast('API anahtarı sorunu. Test modunda devam ediliyor.', 'error');
-                        useTestMode = true;
-                    } else {
-                        throw error;
-                    }
-                }
-                
-                if (!useTestMode && data && data.length > 0) {
-                    currentOrderId = data[0].id;
-                    
-                    // Show success card
-                    hideLoading();
-                    showCard('success');
-                    
-                    // Update success message
-                    const successTitle = document.querySelector('.success-card h2');
-                    const successText = document.querySelector('.success-card p');
-                    if (successTitle) successTitle.textContent = 'Siparişiniz Alındı! 🎉';
-                    if (successText) successText.textContent = 
-                        `${selectedDrink.name} siparişiniz başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz.`;
-                    
-                    // Start real status tracking
-                    startStatusTracking();
-                    
-                    showToast('Sipariş başarıyla oluşturuldu!', 'success');
-                    return;
-                }
-                
-            } catch (realModeError) {
-                console.error('Real mode failed:', realModeError);
-                showToast('Veritabanı hatası. Test moduna geçiliyor.', 'error');
-                useTestMode = true;
-            }
-        }
-        
-        if (useTestMode) {
-            // Test mode - simulate successful order
-            console.log('TEST MODE: Simulating order creation');
-            
-            // Simulate delay
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            currentOrderId = Math.floor(Math.random() * 1000);
-            
-            // Show success card
-            hideLoading();
-            showCard('success');
-            
-            // Update success message
-            const successTitle = document.querySelector('.success-card h2');
-            const successText = document.querySelector('.success-card p');
-            if (successTitle) successTitle.textContent = 'Siparişiniz Alındı! 🎉';
-            if (successText) successText.textContent = 
-                `${selectedDrink.name} siparişiniz başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz. (Test Modu)`;
-            
-            // Start test status tracking
-            startTestStatusTracking();
-            
-            showToast('Sipariş başarıyla oluşturuldu! (Test Modu)', 'success');
-        }
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error creating order:', error);
-        showToast('Sipariş oluşturulurken bir hata oluştu: ' + error.message, 'error');
     }
 }
 
