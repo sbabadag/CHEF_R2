@@ -411,11 +411,12 @@ function handleUserInfoSubmit(e) {
     log('🔄 Form submission started', 'info', true);
     
     try {
-        const nameInput = document.getElementById('customer-name');
-        const departmentInput = document.getElementById('customer-department');
+        const nameInput = document.getElementById('name');
+        const departmentInput = document.getElementById('department');
         
         if (!nameInput || !departmentInput) {
             log('❌ Form inputs not found', 'error', true);
+            log(`Available form elements: ${Array.from(document.querySelectorAll('#user-form input, #user-form select')).map(el => `${el.tagName}#${el.id}`).join(', ')}`, 'info', true);
             showToast('Form hatası - sayfa yenilenecek', 'error');
             setTimeout(() => location.reload(), 2000);
             return;
