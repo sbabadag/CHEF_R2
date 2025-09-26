@@ -404,8 +404,11 @@ async function confirmOrder() {
         let useTestMode = TEST_MODE || !supabase;
         currentOrderIds = []; // Reset order IDs
         
+        safeLog('🔍 Production mode check - TEST_MODE: ' + TEST_MODE + ', supabase: ' + !!supabase);
+        
         if (!TEST_MODE && supabase) {
             // Try real mode first - create separate order for each drink
+            safeLog('🚀 Attempting production mode with Supabase');
             try {
                 const orderPromises = [];
                 
@@ -429,13 +432,16 @@ async function confirmOrder() {
                     }
                 });
                 
+                safeLog('📡 Sending ' + orderPromises.length + ' orders to Supabase...');
                 const results = await Promise.all(orderPromises);
+                safeLog('📥 Received results from Supabase:', 'log');
                 
                 // Check for errors
                 const errors = results.filter(result => result.error);
                 if (errors.length > 0) {
-                    console.error('Supabase errors:', errors);
+                    console.error('❌ Supabase errors detected:', errors);
                     const firstError = errors[0].error;
+                    safeLog('🔥 First error: ' + firstError.message);
                     
                     // Switch to test mode if API key is invalid
                     if (firstError.message.includes('Invalid API key') || 
@@ -478,10 +484,15 @@ async function confirmOrder() {
                 }
                 
             } catch (realModeError) {
-                console.error('Real mode failed:', realModeError);
-                showToast('Veritabanı hatası. Test moduna geçiliyor.', 'error');
+                console.error('❌ Production mode failed:', realModeError);
+                safeLog('🔥 Production error details: ' + realModeError.message);
+                safeLog('🔥 Error code: ' + (realModeError.code || 'No code'));
+                safeLog('🔥 Error status: ' + (realModeError.status || 'No status'));
+                showToast('Veritabanı hatası. Test moduna geçiliyor: ' + realModeError.message, 'error');
                 useTestMode = true;
             }
+        } else {
+            safeLog('⚠️ Skipping production mode - TEST_MODE: ' + TEST_MODE + ', supabase: ' + !!supabase);
         }
         
         if (useTestMode) {
