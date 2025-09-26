@@ -451,45 +451,85 @@ function handleUserInfoSubmit(e) {
 
 // Drink selection functionality
 function setupDrinkSelection() {
+    log('🍹 Setting up drink selection...', 'info', true);
+    
     const drinkOptions = document.querySelectorAll('.drink-option');
-    drinkOptions.forEach(option => {
-        option.addEventListener('click', () => toggleDrinkSelection(option));
+    log(`Found ${drinkOptions.length} drink options`, 'info', true);
+    
+    if (drinkOptions.length === 0) {
+        log('❌ No drink options found! Retrying in 500ms...', 'warn', true);
+        setTimeout(setupDrinkSelection, 500);
+        return;
+    }
+    
+    drinkOptions.forEach((option, index) => {
+        log(`Setting up drink option ${index + 1}: ${option.dataset.drink}`, 'info', true);
+        
+        // Remove any existing listeners to avoid duplicates
+        const newOption = option.cloneNode(true);
+        option.parentNode.replaceChild(newOption, option);
+        
+        newOption.addEventListener('click', () => {
+            log(`🔥 Drink option clicked: ${newOption.dataset.drink}`, 'info', true);
+            toggleDrinkSelection(newOption);
+        });
     });
     
     // Order button
     const orderBtn = document.getElementById('place-order-btn');
     if (orderBtn) {
+        log('✅ Order button found and configured', 'info', true);
         orderBtn.addEventListener('click', handlePlaceOrder);
+    } else {
+        log('❌ Order button not found', 'warn', true);
     }
+    
+    log('✅ Drink selection setup complete', 'info', true);
 }
 
 function toggleDrinkSelection(option) {
+    log(`🔥 toggleDrinkSelection called for: ${option.dataset.drink}`, 'info', true);
+    
     const drinkName = option.dataset.drink;
     const quantityElement = option.querySelector('.quantity');
+    
+    if (!quantityElement) {
+        log('❌ Quantity element not found!', 'error', true);
+        return;
+    }
+    
     let currentQuantity = parseInt(quantityElement.textContent) || 0;
+    log(`Current quantity for ${drinkName}: ${currentQuantity}`, 'info', true);
     
     if (option.classList.contains('selected')) {
         // Decrease quantity or deselect
         currentQuantity--;
+        log(`Decreasing quantity to: ${currentQuantity}`, 'info', true);
+        
         if (currentQuantity <= 0) {
             option.classList.remove('selected');
             quantityElement.textContent = '0';
             // Remove from selected drinks
             selectedDrinks = selectedDrinks.filter(drink => drink.name !== drinkName);
+            log(`❌ Removed ${drinkName} from selection`, 'info', true);
         } else {
             quantityElement.textContent = currentQuantity;
             // Update quantity in selected drinks
             const drink = selectedDrinks.find(d => d.name === drinkName);
             if (drink) drink.quantity = currentQuantity;
+            log(`📝 Updated ${drinkName} quantity to ${currentQuantity}`, 'info', true);
         }
     } else {
         // Select and set quantity to 1
         currentQuantity = 1;
+        log(`Selecting ${drinkName}`, 'info', true);
         option.classList.add('selected');
         quantityElement.textContent = currentQuantity;
         selectedDrinks.push({ name: drinkName, quantity: currentQuantity });
+        log(`✅ Added ${drinkName} to selection`, 'info', true);
     }
     
+    log(`Total selected drinks: ${selectedDrinks.length}`, 'info', true);
     updateOrderButton();
 }
 
