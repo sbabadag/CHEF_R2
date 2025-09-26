@@ -113,14 +113,15 @@ async function initializeApp() {
         
         // Initialize UI components
         setupEventListeners();
-        setupDrinkSelection();
+        setupQuantityControls();
         
         safeLog('✅ App initialization completed');
         
     } catch (error) {
         safeLog('❌ Error during app initialization: ' + error.message, 'error');
-        safeLog('🔄 Falling back to test mode due to initialization error');
-        // Note: Cannot change TEST_MODE as it's a constant, but the app will use test mode for this session
+        safeLog('� CRITICAL: Production mode initialization failed');
+        // Show error to user since we're in production mode only
+        showToast('Sistem başlatma hatası: ' + error.message, 'error');
     }
 }
 
