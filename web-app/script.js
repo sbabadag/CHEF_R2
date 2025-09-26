@@ -27,9 +27,11 @@ function initializeSupabase() {
             supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             supabaseInitialized = true;
             safeLog('✅ Supabase client initialized successfully');
+            safeLog('🔗 Supabase URL: ' + SUPABASE_URL);
             return supabase;
         } else {
-            safeLog('⚠️ Supabase library not yet loaded');
+            safeLog('❌ Supabase library not available - window.supabase is undefined');
+            safeLog('🔍 Supabase load status: loaded=' + window.supabaseLoaded + ', attempted=' + window.supabaseLoadAttempted);
             return null;
         }
     } catch (error) {
@@ -52,8 +54,32 @@ const loadingOverlay = document.getElementById('loading-overlay');
 
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
+    // Wait for Supabase to load, then initialize
+    waitForSupabaseAndInitialize();
 });
+
+function waitForSupabaseAndInitialize() {
+    const maxWaitTime = 5000; // 5 seconds max wait
+    const startTime = Date.now();
+    
+    function checkSupabaseAndInitialize() {
+        if (window.supabaseLoaded === true) {
+            safeLog('✅ Supabase library detected, initializing...');
+            initializeApp();
+        } else if (Date.now() - startTime > maxWaitTime) {
+            safeLog('⚠️ Supabase loading timeout, initializing in test mode');
+            initializeApp();
+        } else if (window.supabaseLoadAttempted === true) {
+            // Still waiting for Supabase to load
+            setTimeout(checkSupabaseAndInitialize, 100);
+        } else {
+            // Supabase script not even attempted to load yet
+            setTimeout(checkSupabaseAndInitialize, 100);
+        }
+    }
+    
+    checkSupabaseAndInitialize();
+}
 
 function initializeApp() {
     safeLog('🚀 Initializing AVM Kitchen Order System...');
