@@ -2,6 +2,7 @@
 const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c';
 
+// PRODUCTION MODE ONLY - Version 2.0 - Cache Buster
 // Test mode - DISABLED - Production mode only
 const TEST_MODE = false;
 
@@ -87,7 +88,8 @@ function waitForSupabaseAndInitialize() {
 }
 
 async function initializeApp() {
-    safeLog('🚀 Initializing AVM Kitchen Order System...');
+    safeLog('🚀 Initializing AVM Kitchen Order System v2.0 (Production Only)...');
+    safeLog('📋 Cache Check - Script Version: Production 2.0');
     
     try {
         // Initialize DOM Elements

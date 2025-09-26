@@ -3,8 +3,8 @@
 
 // WiFi Configuration
 // Update these with your actual WiFi credentials
-#define WIFI_SSID "TURKSAT-KABLONET-26C6-2.4G"
-#define WIFI_PASSWORD "babadag4242"
+#define WIFI_SSID "mihmandarotel"
+#define WIFI_PASSWORD "cumhuriyet58"
 
 // Supabase Configuration
 // Your actual Supabase project details
