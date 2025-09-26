@@ -77,7 +77,7 @@ function waitForSupabaseAndInitialize() {
     checkSupabaseAndInitialize();
 }
 
-function initializeApp() {
+async function initializeApp() {
     safeLog('🚀 Initializing AVM Kitchen Order System...');
     
     try {
@@ -90,12 +90,18 @@ function initializeApp() {
         
         // Initialize Supabase
         supabase = initializeSupabase();
+        safeLog('🔍 After initializeSupabase - supabase object: ' + !!supabase);
+        checkSupabaseState('after initialization');
         
         // Test Supabase connection if not in test mode
         if (!TEST_MODE && supabase) {
-            testSupabaseConnection();
+            safeLog('🧪 Testing Supabase connection...');
+            await testSupabaseConnection();
+            checkSupabaseState('after connection test');
         } else if (TEST_MODE) {
             safeLog('🧪 Running in TEST MODE - offline functionality enabled');
+        } else {
+            safeLog('⚠️ No Supabase client available, will use test mode for orders');
         }
         
         // Initialize UI components
@@ -416,7 +422,13 @@ function updateOrderSummary() {
     `;
 }
 
+// Debug function to check supabase variable state
+function checkSupabaseState(location) {
+    safeLog(`🔍 [${location}] supabase state: ` + !!supabase + `, initialized: ${supabaseInitialized}`);
+}
+
 async function confirmOrder() {
+    checkSupabaseState('confirmOrder start');
     const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
     
     if (!userData.name || !userData.department || !selectedDrinks || selectedDrinks.length === 0) {
