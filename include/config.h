@@ -3,8 +3,8 @@
 
 // WiFi Configuration
 // Update these with your actual WiFi credentials
-#define WIFI_SSID "mihmandarotel"
-#define WIFI_PASSWORD "cumhuriyet58"
+#define WIFI_SSID "LENOVO İPhone'u"
+#define WIFI_PASSWORD "92929292"
 
 // Supabase Configuration
 // Your actual Supabase project details
