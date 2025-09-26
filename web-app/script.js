@@ -2,7 +2,7 @@
 const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c';
 
-// Test mode - set to false for production, true for offline testing
+// Test mode - DISABLED - Production mode only
 const TEST_MODE = false;
 
 // Initialize Supabase client
@@ -20,20 +20,29 @@ const safeLog = (message, type = 'log') => {
 
 // Initialize Supabase with error handling
 function initializeSupabase() {
-    if (supabaseInitialized) return supabase;
+    if (supabaseInitialized && supabase) return supabase;
     
     try {
-        if (typeof window.supabase !== 'undefined') {
-            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            supabaseInitialized = true;
-            safeLog('✅ Supabase client initialized successfully');
-            safeLog('🔗 Supabase URL: ' + SUPABASE_URL);
-            return supabase;
-        } else {
-            safeLog('❌ Supabase library not available - window.supabase is undefined');
-            safeLog('🔍 Supabase load status: loaded=' + window.supabaseLoaded + ', attempted=' + window.supabaseLoadAttempted);
+        // Force wait for Supabase library if not ready
+        if (typeof window.supabase === 'undefined') {
+            safeLog('⏳ Waiting for Supabase library to load...');
+            // Try again after a short delay
+            setTimeout(() => {
+                if (typeof window.supabase !== 'undefined') {
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    supabaseInitialized = true;
+                    safeLog('✅ Supabase client initialized successfully (delayed)');
+                }
+            }, 1000);
             return null;
         }
+        
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabaseInitialized = true;
+        safeLog('✅ Supabase client initialized successfully');
+        safeLog('🔗 Supabase URL: ' + SUPABASE_URL);
+        return supabase;
+        
     } catch (error) {
         safeLog('❌ Error initializing Supabase: ' + error.message, 'error');
         return null;
@@ -93,15 +102,13 @@ async function initializeApp() {
         safeLog('🔍 After initializeSupabase - supabase object: ' + !!supabase);
         checkSupabaseState('after initialization');
         
-        // Test Supabase connection if not in test mode
-        if (!TEST_MODE && supabase) {
+        // Test Supabase connection in production mode
+        if (supabase) {
             safeLog('🧪 Testing Supabase connection...');
             await testSupabaseConnection();
             checkSupabaseState('after connection test');
-        } else if (TEST_MODE) {
-            safeLog('🧪 Running in TEST MODE - offline functionality enabled');
         } else {
-            safeLog('⚠️ No Supabase client available, will use test mode for orders');
+            safeLog('⚠️ No Supabase client available - this is a critical error in production mode');
         }
         
         // Initialize UI components
@@ -439,137 +446,93 @@ async function confirmOrder() {
     showLoading('Siparişler gönderiliyor...');
     
     try {
-        let useTestMode = TEST_MODE || !supabase;
+        // FORCE PRODUCTION MODE - No test mode fallback
         currentOrderIds = []; // Reset order IDs
         
-        safeLog('🔍 Production mode check - TEST_MODE: ' + TEST_MODE + ', supabase: ' + !!supabase);
+        safeLog('� PRODUCTION MODE FORCED - Creating real orders');
         
-        if (!TEST_MODE && supabase) {
-            // Try real mode first - create separate order for each drink
-            safeLog('🚀 Attempting production mode with Supabase');
-            try {
-                const orderPromises = [];
-                
-                selectedDrinks.forEach(drink => {
-                    // Create multiple orders if quantity > 1
-                    for (let i = 0; i < drink.quantity; i++) {
-                        orderPromises.push(
-                            supabase
-                                .from('drink_orders')
-                                .insert([
-                                    {
-                                        customer_name: userData.name,
-                                        department: userData.department,
-                                        drink_type: drink.name,
-                                        status: 'new',
-                                        created_at: new Date().toISOString()
-                                    }
-                                ])
-                                .select()
-                        );
-                    }
-                });
-                
-                safeLog('📡 Sending ' + orderPromises.length + ' orders to Supabase...');
-                const results = await Promise.all(orderPromises);
-                safeLog('📥 Received results from Supabase:', 'log');
-                
-                // Check for errors
-                const errors = results.filter(result => result.error);
-                if (errors.length > 0) {
-                    console.error('❌ Supabase errors detected:', errors);
-                    const firstError = errors[0].error;
-                    safeLog('🔥 First error: ' + firstError.message);
-                    
-                    // Switch to test mode if API key is invalid
-                    if (firstError.message.includes('Invalid API key') || 
-                        firstError.message.includes('401') || 
-                        firstError.message.includes('authentication')) {
-                        console.log('API key error detected, switching to test mode');
-                        showToast('API anahtarı sorunu. Test modunda devam ediliyor.', 'error');
-                        useTestMode = true;
-                    } else {
-                        throw firstError;
-                    }
-                }
-                
-                if (!useTestMode) {
-                    // Collect all order IDs
-                    results.forEach(result => {
-                        if (result.data && result.data.length > 0) {
-                            currentOrderIds.push(result.data[0].id);
-                        }
-                    });
-                    
-                    // Show success card
-                    hideLoading();
-                    showCard('success');
-                    
-                    // Update success message
-                    const successTitle = document.querySelector('.success-card h2');
-                    const successText = document.querySelector('.success-card p');
-                    if (successTitle) successTitle.textContent = 'Siparişleriniz Alındı! 🎉';
-                    if (successText) {
-                        const totalOrders = currentOrderIds.length;
-                        successText.textContent = `${totalOrders} adet sipariş başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz.`;
-                    }
-                    
-                    // Start real status tracking
-                    startStatusTracking();
-                    
-                    showToast(`${currentOrderIds.length} sipariş başarıyla oluşturuldu!`, 'success');
-                    return;
-                }
-                
-            } catch (realModeError) {
-                console.error('❌ Production mode failed:', realModeError);
-                safeLog('🔥 Production error details: ' + realModeError.message);
-                safeLog('🔥 Error code: ' + (realModeError.code || 'No code'));
-                safeLog('🔥 Error status: ' + (realModeError.status || 'No status'));
-                showToast('Veritabanı hatası. Test moduna geçiliyor: ' + realModeError.message, 'error');
-                useTestMode = true;
+        // Ensure Supabase is initialized
+        if (!supabase) {
+            safeLog('🔄 Supabase not ready, initializing now...');
+            supabase = initializeSupabase();
+            
+            // Wait a moment for initialization
+            if (!supabase && typeof window.supabase !== 'undefined') {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                safeLog('✅ Supabase force-initialized');
             }
-        } else {
-            safeLog('⚠️ Skipping production mode - TEST_MODE: ' + TEST_MODE + ', supabase: ' + !!supabase);
         }
         
-        if (useTestMode) {
-            // Test mode - simulate successful orders
-            console.log('TEST MODE: Simulating order creation');
-            
-            // Simulate delay
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Create mock order IDs
-            let totalOrders = 0;
-            selectedDrinks.forEach(drink => {
-                for (let i = 0; i < drink.quantity; i++) {
-                    currentOrderIds.push(Math.floor(Math.random() * 1000) + totalOrders);
-                    totalOrders++;
-                }
-            });
-            
-            // Show success card
-            hideLoading();
-            showCard('success');
-            
-            // Update success message
-            const successTitle = document.querySelector('.success-card h2');
-            const successText = document.querySelector('.success-card p');
-            if (successTitle) successTitle.textContent = 'Siparişleriniz Alındı! 🎉';
-            if (successText) successText.textContent = 
-                `${totalOrders} adet sipariş başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz. (Test Modu)`;
-            
-            // Start test status tracking
-            startTestStatusTracking();
-            
-            showToast(`${totalOrders} sipariş başarıyla oluşturuldu! (Test Modu)`, 'success');
+        if (!supabase) {
+            throw new Error('Supabase initialization failed - cannot proceed in production mode');
         }
+        
+        // PRODUCTION MODE - create separate order for each drink
+        safeLog('🚀 Attempting production mode with Supabase');
+        const orderPromises = [];
+        
+        selectedDrinks.forEach(drink => {
+            // Create multiple orders if quantity > 1
+            for (let i = 0; i < drink.quantity; i++) {
+                orderPromises.push(
+                    supabase
+                        .from('drink_orders')
+                        .insert([
+                            {
+                                customer_name: userData.name,
+                                department: userData.department,
+                                drink_type: drink.name,
+                                status: 'new',
+                                created_at: new Date().toISOString()
+                            }
+                        ])
+                        .select()
+                );
+            }
+        });
+        
+        safeLog('📡 Sending ' + orderPromises.length + ' orders to Supabase...');
+        const results = await Promise.all(orderPromises);
+        safeLog('📥 Received results from Supabase:', 'log');
+        
+        // Check for errors
+        const errors = results.filter(result => result.error);
+        if (errors.length > 0) {
+            console.error('❌ Supabase errors detected:', errors);
+            const firstError = errors[0].error;
+            safeLog('🔥 First error: ' + firstError.message);
+            throw firstError;
+        }
+        
+        // Collect all order IDs
+        results.forEach(result => {
+            if (result.data && result.data.length > 0) {
+                currentOrderIds.push(result.data[0].id);
+            }
+        });
+        
+        // Show success card
+        hideLoading();
+        showCard('success');
+        
+        // Update success message
+        const successTitle = document.querySelector('.success-card h2');
+        const successText = document.querySelector('.success-card p');
+        if (successTitle) successTitle.textContent = 'Siparişleriniz Alındı! 🎉';
+        if (successText) {
+            const totalOrders = currentOrderIds.length;
+            successText.textContent = `${totalOrders} adet sipariş başarıyla oluşturuldu. Aşçı durumunu aşağıdan takip edebilirsiniz.`;
+        }
+        
+        // Start real status tracking
+        startStatusTracking();
+        
+        showToast(`${currentOrderIds.length} sipariş başarıyla oluşturuldu!`, 'success');
         
     } catch (error) {
         hideLoading();
-        console.error('Error creating orders:', error);
-        showToast('Siparişler oluşturulurken bir hata oluştu: ' + error.message, 'error');
+        console.error('❌ Production order creation failed:', error);
+        showToast('Sipariş oluşturulamadı: ' + error.message, 'error');
     }
 }
 
