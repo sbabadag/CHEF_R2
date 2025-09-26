@@ -443,6 +443,24 @@ function handleUserInfoSubmit(e) {
         log('🚀 Navigating to drink-selection card', 'info', true);
         showCard('drink-selection');
         
+        // Add temporary test for drink buttons
+        setTimeout(() => {
+            log('🧪 Testing drink button setup...', 'info', true);
+            const drinkOptions = document.querySelectorAll('.drink-option');
+            log(`Found ${drinkOptions.length} drink options for testing`, 'info', true);
+            
+            drinkOptions.forEach((option, index) => {
+                log(`Testing option ${index + 1}: ${option.dataset.drink}`, 'info', true);
+                
+                // Add direct click test
+                option.addEventListener('click', function testClick() {
+                    log(`🎯 TEST CLICK DETECTED on ${option.dataset.drink}!`, 'info', true);
+                    // Remove this test listener after first click
+                    option.removeEventListener('click', testClick);
+                });
+            });
+        }, 1000);
+        
     } catch (error) {
         log(`❌ Error in handleUserInfoSubmit: ${error.message}`, 'error', true);
         showToast('Form işleminde hata oluştu', 'error');
@@ -868,4 +886,26 @@ window.addEventListener('load', () => {
     if (TEST_MODE) {
         log('🧪 Test mode: Alerts will appear after 10s (alındı) and 30s (hazırlandı)', 'info', true);
     }
+    
+    // Add global test functions for debugging
+    window.testDrinkButtons = function() {
+        log('🧪 Manual drink button test started...', 'info', true);
+        const drinkOptions = document.querySelectorAll('.drink-option');
+        log(`Found ${drinkOptions.length} drink options`, 'info', true);
+        
+        if (drinkOptions.length > 0) {
+            const firstDrink = drinkOptions[0];
+            log(`Testing first drink: ${firstDrink.dataset.drink}`, 'info', true);
+            firstDrink.click();
+        } else {
+            log('❌ No drink options found for testing', 'error', true);
+        }
+    };
+    
+    window.manualSetupDrinks = function() {
+        log('🔧 Manual setup of drink selection...', 'info', true);
+        setupDrinkSelection();
+    };
+    
+    log('✅ Global test functions added: testDrinkButtons(), manualSetupDrinks()', 'info', true);
 });
