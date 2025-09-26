@@ -525,7 +525,7 @@ async function confirmOrder() {
 }
 
 async function startStatusTracking() {
-    if (!currentOrderId) return;
+    if (!currentOrderIds || currentOrderIds.length === 0) return;
     
     // Update status immediately
     await updateOrderStatus();
@@ -535,24 +535,37 @@ async function startStatusTracking() {
 }
 
 async function updateOrderStatus() {
-    if (!currentOrderId) return;
+    if (!currentOrderIds || currentOrderIds.length === 0) return;
     
     try {
+        // Check status for all orders
         const { data, error } = await supabase
             .from('drink_orders')
-            .select('status')
-            .eq('id', currentOrderId)
-            .single();
+            .select('id, status')
+            .in('id', currentOrderIds);
         
         if (error) throw error;
         
-        if (data) {
-            updateStatusUI(data.status);
+        if (data && data.length > 0) {
+            // Find the most advanced status among all orders
+            const statuses = data.map(order => order.status);
+            const hasCompleted = statuses.some(status => status === 'hazirlandi');
+            const hasInProgress = statuses.some(status => status === 'hazirlaniyor');
+            const allNew = statuses.every(status => status === 'new');
             
-            // If order is completed, stop polling
-            if (data.status === 'hazirlandi') {
+            let overallStatus = 'new';
+            if (hasCompleted) {
+                overallStatus = 'hazirlandi';
+            } else if (hasInProgress) {
+                overallStatus = 'hazirlaniyor';
+            }
+            
+            updateStatusUI(overallStatus);
+            
+            // If all orders are completed, stop polling
+            if (hasCompleted && statuses.every(status => status === 'hazirlandi')) {
                 clearInterval(statusCheckInterval);
-                showToast('Siparişiniz hazır! ✨', 'success');
+                showToast('Tüm siparişleriniz hazır! ✨', 'success');
             }
         }
         
@@ -562,7 +575,7 @@ async function updateOrderStatus() {
 }
 
 function startTestStatusTracking() {
-    if (!currentOrderId) return;
+    if (!currentOrderIds || currentOrderIds.length === 0) return;
     
     console.log('Starting test status tracking');
     
@@ -737,35 +750,35 @@ function resetApp() {
 
 // Real-time updates using Supabase subscriptions (optional enhancement)
 function setupRealtimeUpdates() {
-    if (!currentOrderId) return;
+    if (!currentOrderIds || currentOrderIds.length === 0) return;
     
-    const subscription = supabase
-        .channel('order-updates')
-        .on('postgres_changes', 
-            { 
-                event: 'UPDATE', 
-                schema: 'public', 
-                table: 'drink_orders',
-                filter: `id=eq.${currentOrderId}`
-            }, 
-            (payload) => {
-                console.log('Real-time update received:', payload);
-                if (payload.new && payload.new.status) {
-                    updateStatusUI(payload.new.status);
-                    
-                    if (payload.new.status === 'hazirlandi') {
-                        showToast('Siparişiniz hazır! ✨', 'success');
-                        clearInterval(statusCheckInterval);
-                    } else if (payload.new.status === 'alindi') {
-                        showToast('Siparişiniz aşçı tarafından alındı! 👨‍🍳', 'success');
+    // Subscribe to updates for all current orders
+    currentOrderIds.forEach(orderId => {
+        const subscription = supabase
+            .channel(`order-updates-${orderId}`)
+            .on('postgres_changes', 
+                { 
+                    event: 'UPDATE', 
+                    schema: 'public', 
+                    table: 'drink_orders',
+                    filter: `id=eq.${orderId}`
+                }, 
+                (payload) => {
+                    console.log('Real-time update received:', payload);
+                    if (payload.new && payload.new.status) {
+                        updateStatusUI(payload.new.status);
+                        
+                        if (payload.new.status === 'hazirlandi') {
+                            showToast('Bir siparişiniz hazır! ✨', 'success');
+                            // Check if all orders are completed
+                            updateOrderStatus(); // This will stop polling if all are done
+                        } else if (payload.new.status === 'alindi') {
+                            showToast('Bir siparişiniz aşçı tarafından alındı! 👨‍🍳', 'success');
+                        }
                     }
-                }
-            }
-        )
-        .subscribe();
-    
-    // Store subscription for cleanup
-    window.orderSubscription = subscription;
+                })
+            .subscribe();
+    });
 }
 
 // Cleanup on page unload
@@ -782,7 +795,7 @@ window.addEventListener('beforeunload', function() {
 // Error handling for network issues
 window.addEventListener('online', function() {
     showToast('Bağlantı yeniden kuruldu', 'success');
-    if (currentOrderId && !statusCheckInterval) {
+    if (currentOrderIds && currentOrderIds.length > 0 && !statusCheckInterval) {
         startStatusTracking();
     }
 });
