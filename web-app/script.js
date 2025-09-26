@@ -45,12 +45,8 @@ let selectedDrinks = []; // Birden fazla içecek için array
 let currentOrderIds = []; // Birden fazla sipariş ID'si
 let statusCheckInterval = null;
 
-// DOM Elements
-const userInfoCard = document.getElementById('user-info-card');
-const drinkSelectionCard = document.getElementById('drink-selection-card');
-const orderConfirmationCard = document.getElementById('order-confirmation-card');
-const successCard = document.getElementById('success-card');
-const loadingOverlay = document.getElementById('loading-overlay');
+// DOM Elements - will be initialized when DOM is ready
+let userInfoCard, drinkSelectionCard, orderConfirmationCard, successCard, loadingOverlay;
 
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -85,6 +81,13 @@ function initializeApp() {
     safeLog('🚀 Initializing AVM Kitchen Order System...');
     
     try {
+        // Initialize DOM Elements
+        userInfoCard = document.getElementById('user-info-card');
+        drinkSelectionCard = document.getElementById('drink-selection-card');
+        orderConfirmationCard = document.getElementById('order-confirmation-card');
+        successCard = document.getElementById('success-card');
+        loadingOverlay = document.getElementById('loading-overlay');
+        
         // Initialize Supabase
         supabase = initializeSupabase();
         
@@ -103,11 +106,8 @@ function initializeApp() {
         
     } catch (error) {
         safeLog('❌ Error during app initialization: ' + error.message, 'error');
-        // Fallback to test mode if initialization fails
-        if (!TEST_MODE) {
-            safeLog('🔄 Falling back to test mode due to initialization error');
-            TEST_MODE = true;
-        }
+        safeLog('🔄 Falling back to test mode due to initialization error');
+        // Note: Cannot change TEST_MODE as it's a constant, but the app will use test mode for this session
     }
 }
 
