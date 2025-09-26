@@ -491,6 +491,26 @@ function setupDrinkSelection() {
             log(`🔥 Drink option clicked: ${newOption.dataset.drink}`, 'info', true);
             toggleDrinkSelection(newOption);
         });
+        
+        // Setup quantity control buttons for this option
+        const plusBtn = newOption.querySelector('.quantity-btn.plus');
+        const minusBtn = newOption.querySelector('.quantity-btn.minus');
+        
+        if (plusBtn) {
+            plusBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent triggering the main drink selection
+                log(`Plus button clicked for ${newOption.dataset.drink}`, 'info', true);
+                adjustQuantity(newOption, 1);
+            });
+        }
+        
+        if (minusBtn) {
+            minusBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent triggering the main drink selection
+                log(`Minus button clicked for ${newOption.dataset.drink}`, 'info', true);
+                adjustQuantity(newOption, -1);
+            });
+        }
     });
     
     // Order button
@@ -527,6 +547,14 @@ function toggleDrinkSelection(option) {
         if (currentQuantity <= 0) {
             option.classList.remove('selected');
             quantityElement.textContent = '0';
+            
+            // Hide quantity controls
+            const quantityControls = option.querySelector('.quantity-controls');
+            if (quantityControls) {
+                quantityControls.style.display = 'none';
+                log(`Hidden quantity controls for ${drinkName}`, 'info', true);
+            }
+            
             // Remove from selected drinks
             selectedDrinks = selectedDrinks.filter(drink => drink.name !== drinkName);
             log(`❌ Removed ${drinkName} from selection`, 'info', true);
@@ -543,11 +571,75 @@ function toggleDrinkSelection(option) {
         log(`Selecting ${drinkName}`, 'info', true);
         option.classList.add('selected');
         quantityElement.textContent = currentQuantity;
+        
+        // Show quantity controls
+        const quantityControls = option.querySelector('.quantity-controls');
+        if (quantityControls) {
+            quantityControls.style.display = 'flex';
+            log(`Shown quantity controls for ${drinkName}`, 'info', true);
+        } else {
+            log(`❌ Quantity controls not found for ${drinkName}`, 'error', true);
+        }
+        
         selectedDrinks.push({ name: drinkName, quantity: currentQuantity });
         log(`✅ Added ${drinkName} to selection`, 'info', true);
     }
     
     log(`Total selected drinks: ${selectedDrinks.length}`, 'info', true);
+    updateOrderButton();
+}
+
+// Adjust quantity using + and - buttons
+function adjustQuantity(option, change) {
+    const drinkName = option.dataset.drink;
+    const quantityElement = option.querySelector('.quantity');
+    let currentQuantity = parseInt(quantityElement.textContent) || 0;
+    
+    log(`Adjusting quantity for ${drinkName}: ${currentQuantity} ${change > 0 ? '+' : ''}${change}`, 'info', true);
+    
+    const newQuantity = currentQuantity + change;
+    
+    if (newQuantity <= 0) {
+        // Remove selection completely
+        option.classList.remove('selected');
+        quantityElement.textContent = '0';
+        
+        // Hide quantity controls
+        const quantityControls = option.querySelector('.quantity-controls');
+        if (quantityControls) {
+            quantityControls.style.display = 'none';
+        }
+        
+        // Remove from selected drinks
+        selectedDrinks = selectedDrinks.filter(drink => drink.name !== drinkName);
+        log(`❌ Removed ${drinkName} from selection (quantity = 0)`, 'info', true);
+        
+    } else if (newQuantity === 1 && currentQuantity === 0) {
+        // First selection
+        option.classList.add('selected');
+        quantityElement.textContent = '1';
+        
+        // Show quantity controls
+        const quantityControls = option.querySelector('.quantity-controls');
+        if (quantityControls) {
+            quantityControls.style.display = 'flex';
+        }
+        
+        selectedDrinks.push({ name: drinkName, quantity: 1 });
+        log(`✅ Added ${drinkName} to selection`, 'info', true);
+        
+    } else if (newQuantity > 0) {
+        // Update existing selection
+        quantityElement.textContent = newQuantity;
+        
+        // Update in selected drinks array
+        const drink = selectedDrinks.find(d => d.name === drinkName);
+        if (drink) {
+            drink.quantity = newQuantity;
+        }
+        log(`📝 Updated ${drinkName} quantity to ${newQuantity}`, 'info', true);
+    }
+    
     updateOrderButton();
 }
 
