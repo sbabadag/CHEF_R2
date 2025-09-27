@@ -3,7 +3,7 @@
 
 // WiFi Configuration
 // Update these with your actual WiFi credentials
-#define WIFI_SSID "LENOVO İPhone'u"
+#define WIFI_SSID "sbabadagip"
 #define WIFI_PASSWORD "92929292"
 
 // Supabase Configuration
