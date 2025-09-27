@@ -288,7 +288,7 @@ body {
 
 /* Quantity Controls */
 .quantity-controls {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     gap: 10px;
@@ -297,6 +297,10 @@ body {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     backdrop-filter: blur(5px);
+}
+
+.drink-option.selected .quantity-controls {
+    display: flex;
 }
 
 .quantity-btn {
@@ -319,12 +323,16 @@ body {
     transform: scale(1.1);
 }
 
-.quantity {
-    color: white;
-    font-weight: bold;
+.quantity-display {
+    color: #333;
+    font-weight: 600;
     font-size: 1.1rem;
-    min-width: 20px;
+    min-width: 24px;
     text-align: center;
+}
+
+.drink-option.selected .quantity-display {
+    color: white;
 }
 
 /* Selected Drinks Summary */

@@ -55,7 +55,23 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingOverlay = document.getElementById('loading-overlay');
         
         safeLog(`DOM Elements found - Cards: ${!!userInfoCard}, ${!!drinkSelectionCard}, ${!!orderConfirmationCard}, ${!!successCard}`);
-        
+
+        const storedUserData = JSON.parse(sessionStorage.getItem('userData') || '{}');
+        if (storedUserData.name && storedUserData.department) {
+            const userForm = document.getElementById('user-form');
+            if (userForm) {
+                const nameInput = userForm.querySelector('#name');
+                const departmentInput = userForm.querySelector('#department');
+                if (nameInput) nameInput.value = storedUserData.name;
+                if (departmentInput) departmentInput.value = storedUserData.department;
+            }
+
+            const userInfo = document.querySelector('.user-info');
+            if (userInfo) {
+                userInfo.innerHTML = `<i class="fas fa-user"></i><span>${storedUserData.name} - ${storedUserData.department}</span>`;
+            }
+        }
+
         // Wait for Supabase then initialize
         setTimeout(() => {
             try {
@@ -63,6 +79,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     supabase = initializeSupabase();
                 }
                 setupEventListeners();
+                initializeDrinkOptions();
                 setupQuantityControls();
                 safeLog('✅ PRODUCTION initialization complete');
             } catch (error) {
@@ -137,6 +154,7 @@ async function confirmOrder() {
             successText.textContent = `PRODUCTION: ${currentOrderIds.length} real database entries created. IDs: ${currentOrderIds.join(', ')}`;
         }
         
+        setStatusIndicators('new');
         showToast(`🔥 PRODUCTION: ${currentOrderIds.length} orders in database!`, 'success');
         
     } catch (error) {
@@ -152,7 +170,7 @@ function setupEventListeners() {
     if (userForm) {
         userForm.addEventListener('submit', handleUserInfoSubmit);
     }
-    
+
     const drinkOptions = document.querySelectorAll('.drink-option');
     drinkOptions.forEach(option => {
         option.addEventListener('click', (e) => {
@@ -162,53 +180,102 @@ function setupEventListeners() {
             toggleDrinkSelection(option);
         });
     });
-    
+
     const confirmBtn = document.getElementById('confirm-order');
     if (confirmBtn) {
         confirmBtn.addEventListener('click', confirmOrder);
+    }
+
+    const continueToConfirmationBtn = document.getElementById('continue-to-confirmation');
+    if (continueToConfirmationBtn) {
+        continueToConfirmationBtn.addEventListener('click', () => {
+            const totalSelected = selectedDrinks.reduce((total, drink) => total + (drink.quantity || 0), 0);
+            if (totalSelected === 0) {
+                showToast('Lütfen en az bir içecek seçin!', 'error');
+                return;
+            }
+            updateConfirmationSummary();
+            setStatusIndicators('new');
+            showCard('order-confirmation');
+        });
+    }
+
+    const backToUserInfoBtn = document.getElementById('back-to-user-info');
+    if (backToUserInfoBtn) {
+        backToUserInfoBtn.addEventListener('click', () => {
+            initializeDrinkOptions();
+            showCard('user-info');
+        });
+    }
+
+    const backToDrinksBtn = document.getElementById('back-to-drinks');
+    if (backToDrinksBtn) {
+        backToDrinksBtn.addEventListener('click', () => {
+            showCard('drink-selection');
+        });
+    }
+
+    const placeNewOrderBtn = document.getElementById('place-new-order');
+    if (placeNewOrderBtn) {
+        placeNewOrderBtn.addEventListener('click', () => {
+            resetOrderFlow({ preserveUser: true });
+        });
+    }
+
+    const placeNewOrderConfirmationBtn = document.getElementById('place-new-order-confirmation');
+    if (placeNewOrderConfirmationBtn) {
+        placeNewOrderConfirmationBtn.addEventListener('click', () => {
+            resetOrderFlow({ preserveUser: true });
+        });
     }
 }
 
 function setupQuantityControls() {
     const quantityButtons = document.querySelectorAll('.quantity-btn');
     safeLog(`🔥 Found ${quantityButtons.length} quantity buttons`);
-    
+
     quantityButtons.forEach((btn, index) => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            
+
             const drinkOption = btn.closest('.drink-option');
             if (!drinkOption) {
                 safeLog(`❌ No drink option found for button ${index}`);
                 return;
             }
-            
+
             const drinkName = drinkOption.dataset.drink;
             const isPlus = btn.classList.contains('plus');
-            
+
             safeLog(`🔥 Quantity button clicked: ${isPlus ? 'plus' : 'minus'} for ${drinkName}`);
-            
+
             const quantityDisplay = drinkOption.querySelector('.quantity-display');
             if (!quantityDisplay) {
                 safeLog(`❌ No quantity display found for ${drinkName}`);
                 return;
             }
-            
+
             let currentQuantity = parseInt(quantityDisplay.textContent) || 0;
-            
+
             if (isPlus) {
                 currentQuantity++;
-            } else {
-                if (currentQuantity > 0) currentQuantity--;
+            } else if (currentQuantity > 0) {
+                currentQuantity--;
             }
-            
+
             quantityDisplay.textContent = currentQuantity;
             safeLog(`Current quantity for ${drinkName}: ${currentQuantity}`);
-            
+
+            if (currentQuantity > 0) {
+                drinkOption.classList.add('selected');
+            } else {
+                drinkOption.classList.remove('selected');
+            }
+
             updateSelectedDrink(drinkName, currentQuantity);
         });
     });
-    
+
     safeLog('✅ Quantity controls setup complete');
 }
 
@@ -236,39 +303,100 @@ function updateSelectedDrink(drinkName, quantity) {
 function toggleDrinkSelection(option) {
     const drinkName = option.dataset.drink;
     safeLog(`🔥 toggleDrinkSelection called for: ${drinkName}`);
-    safeLog(`Selecting ${drinkName}`);
-    
-    // Find quantity display more safely
+
     const quantityDisplay = option.querySelector('.quantity-display');
     if (!quantityDisplay) {
         safeLog(`❌ No quantity display found for ${drinkName}`);
         return;
     }
-    
+
     const currentQuantity = parseInt(quantityDisplay.textContent) || 0;
-    const newQuantity = currentQuantity === 0 ? 1 : currentQuantity;
-    
+    const isSelected = option.classList.contains('selected');
+    const newQuantity = isSelected && currentQuantity > 0 ? 0 : Math.max(currentQuantity, 1);
+
     quantityDisplay.textContent = newQuantity;
+
+    if (newQuantity > 0) {
+        option.classList.add('selected');
+    } else {
+        option.classList.remove('selected');
+    }
+
     updateSelectedDrink(drinkName, newQuantity);
 }
 
 function updateDrinkSummary() {
-    // Basic implementation
-    safeLog('Updating drink summary...');
+    const summaryContainer = document.getElementById('selected-drinks-summary');
+    const listElement = document.getElementById('selected-drinks-list');
+    const totalElement = document.getElementById('total-count');
+    const continueButton = document.getElementById('continue-to-confirmation');
+
+    if (!summaryContainer || !listElement || !totalElement) {
+        safeLog('❌ Drink summary elements not found');
+        return;
+    }
+
+    listElement.innerHTML = '';
+
+    if (selectedDrinks.length === 0) {
+        summaryContainer.style.display = 'none';
+        totalElement.textContent = '0';
+        if (continueButton) {
+            continueButton.style.display = 'none';
+        }
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    let totalCount = 0;
+
+    selectedDrinks.forEach((drink) => {
+        if (!drink.quantity) {
+            return;
+        }
+        totalCount += drink.quantity;
+
+        const item = document.createElement('div');
+        item.className = 'selected-drink-item';
+        item.innerHTML = `<span>${drink.name}</span><span>x${drink.quantity}</span>`;
+        fragment.appendChild(item);
+    });
+
+    if (totalCount === 0) {
+        summaryContainer.style.display = 'none';
+        totalElement.textContent = '0';
+        if (continueButton) {
+            continueButton.style.display = 'none';
+        }
+        return;
+    }
+
+    totalElement.textContent = `${totalCount}`;
+    summaryContainer.style.display = 'block';
+    listElement.appendChild(fragment);
+
+    if (continueButton) {
+        continueButton.style.display = 'inline-flex';
+    }
 }
 
 function handleUserInfoSubmit(e) {
     e.preventDefault();
-    
+
     const formData = new FormData(e.target);
-    const userData = {
-        name: formData.get('name'),
-        department: formData.get('department')
-    };
-    
+    const name = (formData.get('name') || '').toString().trim();
+    const department = (formData.get('department') || '').toString().trim();
+
+    if (!name || !department) {
+        showToast('Lütfen isim ve departman bilgilerini girin!', 'error');
+        return;
+    }
+
+    const userData = { name, department };
+
     sessionStorage.setItem('userData', JSON.stringify(userData));
     showCard('drink-selection');
-    
+
     const userInfo = document.querySelector('.user-info');
     if (userInfo) {
         userInfo.innerHTML = `<i class="fas fa-user"></i><span>${userData.name} - ${userData.department}</span>`;
@@ -289,7 +417,7 @@ function showCard(cardId) {
 function showLoading(message) {
     if (loadingOverlay) {
         loadingOverlay.style.display = 'flex';
-        const loadingText = loadingOverlay.querySelector('.loading-text');
+        const loadingText = loadingOverlay.querySelector('.loading-text') || loadingOverlay.querySelector('.loading-spinner p');
         if (loadingText) loadingText.textContent = message;
     }
 }
@@ -304,4 +432,135 @@ function showToast(message, type = 'info') {
     safeLog(`TOAST: ${message}`);
     // Basic toast implementation
     alert(message);
+}
+
+function initializeDrinkOptions() {
+    const drinkOptions = document.querySelectorAll('.drink-option');
+    drinkOptions.forEach((option) => {
+        option.classList.remove('selected');
+        const quantityDisplay = option.querySelector('.quantity-display');
+        if (quantityDisplay) {
+            quantityDisplay.textContent = '0';
+        }
+    });
+
+    selectedDrinks = [];
+    updateDrinkSummary();
+    setStatusIndicators('new');
+}
+
+function updateConfirmationSummary() {
+    const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
+    const summaryUser = document.getElementById('summary-user');
+    const summaryDrinksList = document.getElementById('summary-drinks-list');
+    const summaryTotalCount = document.getElementById('summary-total-count');
+    const summaryTime = document.getElementById('summary-time');
+
+    if (summaryUser) {
+        const userSpan = summaryUser.querySelector('span');
+        if (userSpan) {
+            userSpan.textContent = userData.name && userData.department ? `${userData.name} - ${userData.department}` : '-';
+        }
+    }
+
+    if (summaryDrinksList) {
+        summaryDrinksList.innerHTML = '';
+
+        if (selectedDrinks.length === 0) {
+            summaryDrinksList.textContent = '-';
+        } else {
+            selectedDrinks.forEach((drink) => {
+                if (!drink.quantity) {
+                    return;
+                }
+                const item = document.createElement('div');
+                item.className = 'summary-drink-item';
+                item.innerHTML = `<span>${drink.name}</span><span>x${drink.quantity}</span>`;
+                summaryDrinksList.appendChild(item);
+            });
+        }
+    }
+
+    if (summaryTotalCount) {
+        const totalCount = selectedDrinks.reduce((total, drink) => total + (drink.quantity || 0), 0);
+        summaryTotalCount.textContent = `${totalCount} içecek`;
+    }
+
+    if (summaryTime) {
+        const timeSpan = summaryTime.querySelector('span');
+        if (timeSpan) {
+            const now = new Date();
+            timeSpan.textContent = now.toLocaleString('tr-TR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+    }
+}
+
+function resetOrderFlow({ preserveUser = false } = {}) {
+    initializeDrinkOptions();
+    currentOrderIds = [];
+
+    const successTitle = document.querySelector('.success-card h2');
+    const successText = document.querySelector('.success-card p');
+    if (successTitle) {
+        successTitle.textContent = 'Sipariş Başarıyla Gönderildi!';
+    }
+    if (successText) {
+        successText.textContent = 'Siparişiniz mutfağa iletildi. Hazır olduğunda bilgilendirileceksiniz.';
+    }
+
+    if (!preserveUser) {
+        sessionStorage.removeItem('userData');
+        const userForm = document.getElementById('user-form');
+        if (userForm) {
+            userForm.reset();
+        }
+        const userInfo = document.querySelector('.user-info');
+        if (userInfo) {
+            userInfo.innerHTML = '<i class="fas fa-user-clock"></i><span>Giriş yapın</span>';
+        }
+        showCard('user-info');
+    } else {
+        showCard('drink-selection');
+    }
+}
+
+function setStatusIndicators(status = 'new') {
+    const groups = [
+        ['status-new', 'status-alindi', 'status-hazirlandi'],
+        ['status-new-confirmation', 'status-alindi-confirmation', 'status-hazirlandi-confirmation']
+    ];
+    const order = ['new', 'alindi', 'hazirlandi'];
+    const targetIndex = order.indexOf(status);
+
+    groups.forEach((group) => {
+        group.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.remove('active');
+            }
+        });
+        const indexToActivate = targetIndex >= 0 ? targetIndex : 0;
+        for (let i = 0; i <= indexToActivate; i++) {
+            const el = document.getElementById(group[i]);
+            if (el) {
+                el.classList.add('active');
+            }
+        }
+    });
+
+    const statusTextConfirmation = document.getElementById('status-text-confirmation');
+    if (statusTextConfirmation) {
+        const messages = {
+            new: 'Sipariş alındı, hazırlanıyor...',
+            alindi: 'Sipariş mutfak tarafından onaylandı.',
+            hazirlandi: 'Sipariş hazırlandı, teslim ediliyor.'
+        };
+        statusTextConfirmation.textContent = messages[status] || messages.new;
+    }
 }
