@@ -46,21 +46,33 @@ function initializeSupabase() {
 document.addEventListener('DOMContentLoaded', function() {
     safeLog('🔥 PRODUCTION APP LOADING - NO TEST MODE');
     
-    // Initialize DOM elements
-    userInfoCard = document.getElementById('user-info-card');
-    drinkSelectionCard = document.getElementById('drink-selection-card');
-    orderConfirmationCard = document.getElementById('order-confirmation-card');
-    successCard = document.getElementById('success-card');
-    loadingOverlay = document.getElementById('loading-overlay');
-    
-    // Wait for Supabase then initialize
-    setTimeout(() => {
-        if (typeof window.supabase !== 'undefined') {
-            supabase = initializeSupabase();
-        }
-        setupEventListeners();
-        setupQuantityControls();
-    }, 2000);
+    try {
+        // Initialize DOM elements
+        userInfoCard = document.getElementById('user-info-card');
+        drinkSelectionCard = document.getElementById('drink-selection-card');
+        orderConfirmationCard = document.getElementById('order-confirmation-card');
+        successCard = document.getElementById('success-card');
+        loadingOverlay = document.getElementById('loading-overlay');
+        
+        safeLog(`DOM Elements found - Cards: ${!!userInfoCard}, ${!!drinkSelectionCard}, ${!!orderConfirmationCard}, ${!!successCard}`);
+        
+        // Wait for Supabase then initialize
+        setTimeout(() => {
+            try {
+                if (typeof window.supabase !== 'undefined') {
+                    supabase = initializeSupabase();
+                }
+                setupEventListeners();
+                setupQuantityControls();
+                safeLog('✅ PRODUCTION initialization complete');
+            } catch (error) {
+                safeLog('❌ Setup error: ' + error.message, 'error');
+            }
+        }, 2000);
+        
+    } catch (error) {
+        safeLog('❌ DOM initialization error: ' + error.message, 'error');
+    }
 });
 
 // PRODUCTION ONLY - CONFIRM ORDER
@@ -159,18 +171,30 @@ function setupEventListeners() {
 
 function setupQuantityControls() {
     const quantityButtons = document.querySelectorAll('.quantity-btn');
+    safeLog(`🔥 Found ${quantityButtons.length} quantity buttons`);
     
-    quantityButtons.forEach(btn => {
+    quantityButtons.forEach((btn, index) => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             
             const drinkOption = btn.closest('.drink-option');
+            if (!drinkOption) {
+                safeLog(`❌ No drink option found for button ${index}`);
+                return;
+            }
+            
             const drinkName = drinkOption.dataset.drink;
             const isPlus = btn.classList.contains('plus');
             
-            safeLog(`🔥 Quantity button clicked: ${isPlus ? 'plus' : 'minus'}`);
+            safeLog(`🔥 Quantity button clicked: ${isPlus ? 'plus' : 'minus'} for ${drinkName}`);
             
-            let currentQuantity = parseInt(drinkOption.querySelector('.quantity-display').textContent) || 0;
+            const quantityDisplay = drinkOption.querySelector('.quantity-display');
+            if (!quantityDisplay) {
+                safeLog(`❌ No quantity display found for ${drinkName}`);
+                return;
+            }
+            
+            let currentQuantity = parseInt(quantityDisplay.textContent) || 0;
             
             if (isPlus) {
                 currentQuantity++;
@@ -178,7 +202,7 @@ function setupQuantityControls() {
                 if (currentQuantity > 0) currentQuantity--;
             }
             
-            drinkOption.querySelector('.quantity-display').textContent = currentQuantity;
+            quantityDisplay.textContent = currentQuantity;
             safeLog(`Current quantity for ${drinkName}: ${currentQuantity}`);
             
             updateSelectedDrink(drinkName, currentQuantity);
@@ -214,10 +238,17 @@ function toggleDrinkSelection(option) {
     safeLog(`🔥 toggleDrinkSelection called for: ${drinkName}`);
     safeLog(`Selecting ${drinkName}`);
     
-    const currentQuantity = parseInt(option.querySelector('.quantity-display').textContent) || 0;
+    // Find quantity display more safely
+    const quantityDisplay = option.querySelector('.quantity-display');
+    if (!quantityDisplay) {
+        safeLog(`❌ No quantity display found for ${drinkName}`);
+        return;
+    }
+    
+    const currentQuantity = parseInt(quantityDisplay.textContent) || 0;
     const newQuantity = currentQuantity === 0 ? 1 : currentQuantity;
     
-    option.querySelector('.quantity-display').textContent = newQuantity;
+    quantityDisplay.textContent = newQuantity;
     updateSelectedDrink(drinkName, newQuantity);
 }
 
