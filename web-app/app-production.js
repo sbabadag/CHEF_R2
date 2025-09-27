@@ -13,7 +13,10 @@ let supabaseInitialized = false;
 // Global variables
 let selectedDrinks = [];
 let currentOrderIds = [];
+let currentOrderGroupId = null;
 let statusCheckInterval = null;
+let orderStatusChannel = null;
+let lastKnownGroupStatus = null;
 
 // DOM Elements
 let userInfoCard, drinkSelectionCard, orderConfirmationCard, successCard, loadingOverlay;
@@ -118,29 +121,33 @@ async function confirmOrder() {
     
     try {
         currentOrderIds = [];
+        const orderGroupId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+        currentOrderGroupId = orderGroupId;
+        lastKnownGroupStatus = 'new';
         
-        // Create each order individually  
-        for (const drink of selectedDrinks) {
-            for (let i = 0; i < drink.quantity; i++) {
-                const { data, error } = await supabase
-                    .from('drink_orders')
-                    .insert({
-                        customer_name: userData.name,
-                        department: userData.department,
-                        drink_type: drink.name,
-                        status: 'new',
-                        created_at: new Date().toISOString()
-                    })
-                    .select()
-                    .single();
-                
-                if (error) throw error;
-                
-                if (data) {
-                    currentOrderIds.push(data.id);
-                    safeLog(`✅ PRODUCTION Order ID: ${data.id}`);
-                }
-            }
+        // Create one order row per selected drink type, with quantity
+        const ordersToInsert = selectedDrinks.map(drink => ({
+            customer_name: userData.name,
+            department: userData.department,
+            drink_type: drink.name,
+            quantity: drink.quantity,
+            status: 'new',
+            created_at: new Date().toISOString(),
+            order_group_id: orderGroupId
+        }));
+
+        const { data, error } = await supabase
+            .from('drink_orders')
+            .insert(ordersToInsert)
+            .select();
+
+        if (error) throw error;
+
+        if (data) {
+            currentOrderIds = data.map(d => d.id);
+            safeLog(`✅ PRODUCTION Order IDs: ${currentOrderIds.join(', ')}`);
         }
         
         hideLoading();
@@ -156,6 +163,7 @@ async function confirmOrder() {
         
         setStatusIndicators('new');
         showToast(`🔥 PRODUCTION: ${currentOrderIds.length} orders in database!`, 'success');
+        startOrderStatusListener(orderGroupId);
         
     } catch (error) {
         hideLoading();
@@ -504,6 +512,9 @@ function updateConfirmationSummary() {
 function resetOrderFlow({ preserveUser = false } = {}) {
     initializeDrinkOptions();
     currentOrderIds = [];
+    currentOrderGroupId = null;
+    stopOrderStatusListener();
+    lastKnownGroupStatus = null;
 
     const successTitle = document.querySelector('.success-card h2');
     const successText = document.querySelector('.success-card p');
@@ -562,5 +573,130 @@ function setStatusIndicators(status = 'new') {
             hazirlandi: 'Sipariş hazırlandı, teslim ediliyor.'
         };
         statusTextConfirmation.textContent = messages[status] || messages.new;
+    }
+}
+
+const STATUS_PRIORITY = {
+    new: 0,
+    alindi: 1,
+    hazirlandi: 2,
+    teslim_edildi: 3,
+    iptal: -1
+};
+
+function stopOrderStatusListener() {
+    if (orderStatusChannel && typeof orderStatusChannel.unsubscribe === 'function') {
+        orderStatusChannel.unsubscribe();
+    }
+    orderStatusChannel = null;
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+        statusCheckInterval = null;
+    }
+}
+
+async function refreshGroupStatus(orderGroupId) {
+    if (!orderGroupId) {
+      return;
+    }
+
+    if (!supabase) {
+        supabase = initializeSupabase();
+    }
+
+    if (!supabase) {
+        safeLog('❌ Unable to refresh status: Supabase not initialized', 'error');
+        return;
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('drink_orders')
+            .select('status')
+            .eq('order_group_id', orderGroupId);
+
+        if (error) {
+            safeLog('❌ Status refresh error: ' + error.message, 'error');
+            return;
+        }
+
+        if (!Array.isArray(data) || data.length === 0) {
+            safeLog('ℹ️ No orders found for group ' + orderGroupId);
+            return;
+        }
+
+        let highestStatus = 'new';
+        data.forEach(({ status }) => {
+            if (STATUS_PRIORITY[status] > STATUS_PRIORITY[highestStatus]) {
+                highestStatus = status;
+            }
+        });
+
+        safeLog(`🔄 Group ${orderGroupId} status -> ${highestStatus}`);
+        setStatusIndicators(highestStatus);
+
+        if (highestStatus !== lastKnownGroupStatus) {
+            lastKnownGroupStatus = highestStatus;
+            const statusMessages = {
+                new: 'Siparişiniz mutfak kuyruğuna alındı. Lütfen bekleyiniz.',
+                alindi: 'Mutfak siparişinizi hazırlamaya başladı.',
+                hazirlandi: 'Siparişiniz hazır! Teslim için bekleyiniz.',
+                teslim_edildi: 'Siparişiniz teslim edildi. Afiyet olsun!',
+                iptal: 'Siparişiniz iptal edildi. Detaylar için mutfakla görüşün.'
+            };
+            const successText = document.querySelector('.success-card p');
+            if (successText) {
+                successText.textContent = statusMessages[highestStatus] || statusMessages.new;
+            }
+        }
+    } catch (err) {
+        safeLog('❌ Unexpected status refresh error: ' + err.message, 'error');
+    }
+}
+
+function startOrderStatusListener(orderGroupId) {
+    stopOrderStatusListener();
+
+    if (!orderGroupId) {
+        safeLog('⚠️ No order group id provided for status monitor');
+        return;
+    }
+
+    if (!supabase) {
+        supabase = initializeSupabase();
+    }
+
+    if (!supabase) {
+        safeLog('❌ Cannot start status listener: Supabase unavailable', 'error');
+        return;
+    }
+
+    safeLog(`📡 Starting realtime listener for group ${orderGroupId}`);
+
+    orderStatusChannel = supabase
+        .channel(`order-status-${orderGroupId}`)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'drink_orders',
+            filter: `order_group_id=eq.${orderGroupId}`
+        }, (payload) => {
+            const newStatus = payload?.new?.status || payload?.old?.status || 'unknown';
+            safeLog(`📨 Realtime status update (${orderGroupId}): ${newStatus}`);
+            refreshGroupStatus(orderGroupId);
+        });
+
+    if (orderStatusChannel && typeof orderStatusChannel.subscribe === 'function') {
+        orderStatusChannel.subscribe((status) => {
+            safeLog(`🔔 Subscription state for ${orderGroupId}: ${status}`);
+            if (status === 'SUBSCRIBED') {
+                refreshGroupStatus(orderGroupId);
+            }
+        });
+    } else {
+        safeLog('⚠️ Supabase channel subscribe API unavailable; falling back to polling');
+        refreshGroupStatus(orderGroupId);
+        clearInterval(statusCheckInterval);
+        statusCheckInterval = setInterval(() => refreshGroupStatus(orderGroupId), 5000);
     }
 }

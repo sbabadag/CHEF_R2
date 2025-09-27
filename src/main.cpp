@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
+#include <math.h>
 #include "config.h"
 
 class LGFX_CYD : public lgfx::LGFX_Device {
@@ -63,10 +64,10 @@ public:
 
     {
       auto cfg = _touch_instance.config();
-      cfg.x_min = 0;
-      cfg.x_max = 306;
-      cfg.y_min = 48;
-      cfg.y_max = 191;
+      cfg.x_min = 300;
+      cfg.x_max = 3800;
+      cfg.y_min = 300;
+      cfg.y_max = 3800;
       cfg.pin_cs = 33;
       cfg.pin_int = 36;
       cfg.bus_shared = true;
@@ -81,6 +82,30 @@ public:
     }
 
     setPanel(&_panel_instance);
+  }
+
+  void touch_calibrate() {
+    this->fillScreen(TFT_BLACK);
+    this->setCursor(20, 0);
+    this->setTextFont(2);
+    this->setTextSize(1);
+    this->setTextColor(TFT_WHITE, TFT_BLACK);
+    this->println("Touch screen calibration");
+    this->println("Please tap the crosshairs");
+    this->setTextFont(1);
+    delay(1000);
+    uint16_t calData[5];
+    this->calibrateTouch(calData, TFT_MAGENTA, TFT_BLACK, 15);
+    Serial.println("Calibration complete!");
+    Serial.printf("x_min=%d, x_max=%d, y_min=%d, y_max=%d\n", calData[0], calData[1], calData[2], calData[3]);
+    
+    // Apply the new calibration
+    auto cfg = _touch_instance.config();
+    cfg.x_min = calData[0];
+    cfg.x_max = calData[1];
+    cfg.y_min = calData[2];
+    cfg.y_max = calData[3];
+    _touch_instance.config(cfg);
   }
 };
 
@@ -97,21 +122,6 @@ const char* password = WIFI_PASSWORD;
 const char* supabase_url = SUPABASE_URL;
 const char* supabase_key = SUPABASE_ANON_KEY;
 
-// Group order structure for combined display
-struct GroupOrder {
-  String id;
-  String customer_name;
-  String department;
-  String drinks; // Combined drinks text
-  int total_quantity; // Sum of all quantities
-  String status;
-  String special_instructions;
-  int priority;
-  String created_at;
-  float waiting_minutes;
-  int position_y;
-};
-
 // Order structure for multiple drink orders
 struct Order {
   String id;
@@ -124,14 +134,12 @@ struct Order {
   int priority;          // New field for priority (0=normal, 1=urgent)
   String created_at;
   float waiting_minutes; // Calculated waiting time
-  int position_y;
+  String order_group_id;
 };
 
 const int MAX_ORDERS = 8;
 Order orders[MAX_ORDERS];
-GroupOrder groupedOrders[MAX_ORDERS];
 int orderCount = 0;
-int groupedOrderCount = 0;
 unsigned long lastFetch = 0;
 const unsigned long FETCH_INTERVAL = 15000; // Increased to 15 seconds
 int consecutiveErrors = 0;
@@ -143,16 +151,31 @@ bool buzzerActive = false;
 unsigned long lastBuzzerTime = 0;
 const unsigned long BUZZER_INTERVAL = 60000; // 1 minute = 60000ms
 String lastOrderId = "";
-bool initialBuzzDone = false;
+
+const int MAX_GROUPS = MAX_ORDERS;
+
+struct GroupOrder {
+  String group_id;
+  String customer_name;
+  String department;
+  String status;
+  bool urgent;
+  String created_at;
+  float waiting_minutes;
+  int total_quantity;
+};
+
+GroupOrder groupedOrders[MAX_GROUPS];
+int groupedOrderCount = 0;
 
 // Forward declarations
 void fetchOrders();
-void groupOrdersByCustomer();
 void drawScreen();
-void updateGroupOrderStatus(String customerName, String currentStatus, String newStatus);
 void handleTouch(uint16_t x, uint16_t y);
-void updateOrderStatus(int orderIndex, const String& newStatus);
-int findTouchedOrder(uint16_t x, uint16_t y);
+void updateGroupOrderStatus(int groupIndex, const String& newStatus);
+int findTouchedGroup(uint16_t x, uint16_t y);
+void buildGroupedOrders();
+void showGroupTapFeedback(const String& message, uint16_t backgroundColor, uint16_t textColor);
 String utf8ToLatin1(String input);
 void buzzerBeep(int count = 1, int duration = 200, int pause = 300);
 void checkNewOrderBuzzer();
@@ -186,6 +209,10 @@ void setup() {
   
   tft.init();
   tft.setRotation(1);  // Landscape mode 320x240
+  
+  // Run calibration
+  tft.touch_calibrate();
+
   tft.fillScreen(TFT_BLACK);
   
   // Connect to WiFi
@@ -268,8 +295,8 @@ void fetchOrders() {
   Serial.println("Siparisler getiriliyor...");
   
   HTTPClient http;
-  // Updated query for multiple drink orders - get orders that are "new" or "alindi"
-  String url = String(supabase_url) + "/rest/v1/drink_orders?or=(status.eq.new,status.eq.alindi)&order=priority.desc,created_at.asc";
+  // Fetch only "new" orders so acknowledged batches disappear from screen
+  String url = String(supabase_url) + "/rest/v1/drink_orders?status=eq.new&order=priority.desc,created_at.asc";
   
   Serial.println("URL: " + url);
   
@@ -310,6 +337,11 @@ void fetchOrders() {
         orders[orderCount].special_instructions = utf8ToLatin1(obj["special_instructions"].as<String>());
         orders[orderCount].priority = obj["priority"].as<int>();
         orders[orderCount].created_at = obj["created_at"].as<String>();
+        if (obj.containsKey("order_group_id") && !obj["order_group_id"].isNull()) {
+          orders[orderCount].order_group_id = obj["order_group_id"].as<String>();
+        } else {
+          orders[orderCount].order_group_id = orders[orderCount].id;
+        }
         
         // Calculate waiting minutes if available
         if (obj.containsKey("waiting_minutes") && !obj["waiting_minutes"].isNull()) {
@@ -322,7 +354,7 @@ void fetchOrders() {
       }
       
       Serial.println("Siparisler guncellendi: " + String(orderCount) + " adet");
-      groupOrdersByCustomer(); // Group orders by customer
+  buildGroupedOrders();
       drawScreen();
       
       // Check for new orders and trigger buzzer if needed
@@ -377,66 +409,96 @@ void fetchOrders() {
   http.end();
 }
 
-// Group orders by customer to combine multiple drinks into single card
-void groupOrdersByCustomer() {
+int statusRank(const String& status) {
+  if (status == "new") return 0;
+  if (status == "alindi") return 1;
+  if (status == "hazirlandi") return 2;
+  if (status == "teslim_edildi") return 3;
+  if (status == "iptal") return 4;
+  return 5;
+}
+
+void buildGroupedOrders() {
   groupedOrderCount = 0;
-  
-  for (int i = 0; i < orderCount && groupedOrderCount < MAX_ORDERS; i++) {
-    String currentCustomer = orders[i].customer_name;
-    String currentStatus = orders[i].status;
-    
-    // Check if this customer already exists in grouped orders
-    int existingIndex = -1;
-    for (int j = 0; j < groupedOrderCount; j++) {
-      if (groupedOrders[j].customer_name == currentCustomer && 
-          groupedOrders[j].status == currentStatus) {
-        existingIndex = j;
+
+  for (int i = 0; i < orderCount; i++) {
+    Order* order = &orders[i];
+
+    // Strict check: Only process items that have a group ID.
+    if (order->order_group_id.length() == 0) {
+      continue;
+    }
+    String groupId = order->order_group_id;
+    int safeQuantity = order->quantity > 0 ? order->quantity : 1;
+
+    int groupIndex = -1;
+    for (int g = 0; g < groupedOrderCount; g++) {
+      if (groupedOrders[g].group_id == groupId) {
+        groupIndex = g;
         break;
       }
     }
-    
-    if (existingIndex >= 0) {
-      // Customer exists, add drink to existing group
-      GroupOrder* existing = &groupedOrders[existingIndex];
-      if (existing->drinks.length() > 0) {
-        existing->drinks += "\n";
+
+    if (groupIndex == -1) {
+      if (groupedOrderCount >= MAX_GROUPS) {
+        continue;
       }
-      existing->drinks += orders[i].drink_type;
-      if (orders[i].quantity > 1) {
-        existing->drinks += " x" + String(orders[i].quantity);
-      }
-      existing->total_quantity += orders[i].quantity;
-      
-      // Keep the highest priority and latest time
-      if (orders[i].priority > existing->priority) {
-        existing->priority = orders[i].priority;
-      }
-      if (orders[i].waiting_minutes > existing->waiting_minutes) {
-        existing->waiting_minutes = orders[i].waiting_minutes;
-      }
+
+      groupIndex = groupedOrderCount++;
+      GroupOrder* group = &groupedOrders[groupIndex];
+      group->group_id = groupId;
+      group->customer_name = order->customer_name;
+      group->department = order->department;
+      group->status = order->status;
+      group->urgent = order->priority > 0;
+      group->created_at = order->created_at;
+  group->waiting_minutes = order->waiting_minutes;
+  group->total_quantity = safeQuantity;
     } else {
-      // New customer, create new group
-      GroupOrder* newGroup = &groupedOrders[groupedOrderCount];
-      newGroup->id = orders[i].id;
-      newGroup->customer_name = orders[i].customer_name;
-      newGroup->department = orders[i].department;
-      newGroup->drinks = orders[i].drink_type;
-      if (orders[i].quantity > 1) {
-        newGroup->drinks += " x" + String(orders[i].quantity);
+      GroupOrder* group = &groupedOrders[groupIndex];
+      if (statusRank(order->status) < statusRank(group->status)) {
+        group->status = order->status;
       }
-      newGroup->total_quantity = orders[i].quantity;
-      newGroup->status = orders[i].status;
-      newGroup->special_instructions = orders[i].special_instructions;
-      newGroup->priority = orders[i].priority;
-      newGroup->created_at = orders[i].created_at;
-      newGroup->waiting_minutes = orders[i].waiting_minutes;
-      newGroup->position_y = orders[i].position_y;
-      
-      groupedOrderCount++;
+      if (order->priority > 0) {
+        group->urgent = true;
+      }
+      if (order->waiting_minutes > group->waiting_minutes) {
+        group->waiting_minutes = order->waiting_minutes;
+      }
+  group->total_quantity += safeQuantity;
     }
   }
-  
-  Serial.println("Grupland: " + String(orderCount) + " siparis -> " + String(groupedOrderCount) + " grup");
+
+  Serial.println("Grouped orders built: " + String(groupedOrderCount));
+}
+
+void showGroupTapFeedback(const String& message, uint16_t backgroundColor, uint16_t textColor) {
+  const int cardX = 10;
+  const int cardY = 25;
+  const int cardW = 300;
+  const int cardH = 190;
+
+  // Highlight border
+  tft.drawRoundRect(cardX-2, cardY-2, cardW+4, cardH+4, 14, TFT_WHITE);
+  tft.drawRoundRect(cardX-1, cardY-1, cardW+2, cardH+2, 13, TFT_WHITE);
+
+  // Feedback ribbon near bottom of card
+  const int ribbonMargin = 18;
+  const int ribbonHeight = 32;
+  int ribbonY = cardY + cardH - ribbonHeight - ribbonMargin;
+
+  tft.fillRoundRect(cardX + ribbonMargin, ribbonY, cardW - (ribbonMargin * 2), ribbonHeight, 10, backgroundColor);
+  tft.drawRoundRect(cardX + ribbonMargin, ribbonY, cardW - (ribbonMargin * 2), ribbonHeight, 10, TFT_WHITE);
+
+  tft.setTextColor(textColor);
+  tft.setTextSize(2);
+  int approxWidth = message.length() * 12; // rough width estimate for 2x font
+  int textX = cardX + (cardW / 2) - (approxWidth / 2);
+  if (textX < cardX + ribbonMargin + 6) {
+    textX = cardX + ribbonMargin + 6;
+  }
+  tft.setCursor(textX, ribbonY + 10);
+  tft.print(message);
 }
 
 void drawScreen() {
@@ -461,9 +523,9 @@ void drawScreen() {
   // Show order count in corner
   tft.setTextColor(TFT_WHITE);
   tft.setCursor(260, 5);
-  tft.print("(" + String(groupedOrderCount) + ")");
+  tft.print("(" + String(orderCount) + ")");
   
-  if (groupedOrderCount == 0) {
+  if (orderCount == 0) {
     // No orders - full screen message
     tft.setTextColor(TFT_YELLOW);
     tft.setTextSize(3);
@@ -481,196 +543,196 @@ void drawScreen() {
     return;
   }
   
-  // Show only the LATEST grouped order (first one) in large card format
-  GroupOrder* latestOrder = &groupedOrders[0]; // Get the most recent grouped order
-  latestOrder->position_y = 20; // Set position for touch detection
-  
-  // Determine colors based on status and priority
-  uint16_t bgColor, textColor, accentColor;
-  if (latestOrder->priority > 0) { // Urgent order
-    if (latestOrder->status == "new") {
+  if (groupedOrderCount == 0) {
+    tft.setTextColor(TFT_YELLOW);
+    tft.setTextSize(2);
+    tft.setCursor(40, 120);
+    tft.print("Aktif siparis yok");
+    return;
+  }
+
+  GroupOrder* group = &groupedOrders[0];
+
+  const int cardX = 10;
+  const int cardY = 25;
+  const int cardW = 300;
+  const int cardH = 190;
+
+  uint16_t bgColor = TFT_LIGHTGREY;
+  uint16_t textColor = TFT_BLACK;
+  uint16_t accentColor = TFT_BLACK;
+
+  if (group->urgent) {
+    if (group->status == "new") {
       bgColor = TFT_PURPLE;
       textColor = TFT_WHITE;
       accentColor = TFT_YELLOW;
-    } else {
+    } else if (group->status == "alindi") {
       bgColor = TFT_MAGENTA;
       textColor = TFT_WHITE;
       accentColor = TFT_YELLOW;
     }
   } else {
-    // Normal priority colors
-    if (latestOrder->status == "new") {
+    if (group->status == "new") {
       bgColor = TFT_RED;
       textColor = TFT_WHITE;
       accentColor = TFT_WHITE;
-    } else if (latestOrder->status == "alindi") {
+    } else if (group->status == "alindi") {
       bgColor = TFT_ORANGE;
       textColor = TFT_BLACK;
       accentColor = TFT_BLACK;
-    } else {
-      bgColor = TFT_LIGHTGREY;
+    } else if (group->status == "hazirlandi") {
+      bgColor = TFT_GREEN;
       textColor = TFT_BLACK;
-      accentColor = TFT_BLACK;
+      accentColor = TFT_WHITE;
     }
   }
-  
-  // Main order card - large and prominent (covers most of screen)
-  const int cardX = 10;
-  const int cardY = 25;
-  const int cardW = 300;
-  const int cardH = 180;
-  
-  tft.fillRoundRect(cardX, cardY, cardW, cardH, 8, bgColor);
-  tft.drawRoundRect(cardX, cardY, cardW, cardH, 8, accentColor);
-  tft.drawRoundRect(cardX+1, cardY+1, cardW-2, cardH-2, 7, accentColor);
-  
-  // Priority indicator (large corner badge for urgent orders)
-  if (latestOrder->priority > 0) {
-    tft.fillRoundRect(cardX + cardW - 40, cardY + 5, 35, 20, 3, TFT_YELLOW);
+
+  tft.fillRoundRect(cardX, cardY, cardW, cardH, 12, bgColor);
+  tft.drawRoundRect(cardX, cardY, cardW, cardH, 12, accentColor);
+
+  if (group->urgent) {
+    tft.fillRoundRect(cardX + cardW - 64, cardY + 10, 54, 24, 6, TFT_YELLOW);
     tft.setTextColor(TFT_BLACK);
-    tft.setTextSize(1);
-    tft.setCursor(cardX + cardW - 35, cardY + 10);
+    tft.setTextSize(2);
+    tft.setCursor(cardX + cardW - 58, cardY + 16);
     tft.print("ACIL");
   }
-  
-  // Customer name - very large
+
+  // Customer name
   tft.setTextColor(textColor);
   tft.setTextSize(3);
-  int nameY = cardY + 15;
-  tft.setCursor(cardX + 10, nameY);
-  String customerName = latestOrder->customer_name;
+  String customerName = group->customer_name;
   if (customerName.length() > 12) {
     customerName = customerName.substring(0, 10) + "..";
   }
+  tft.setCursor(cardX + 16, cardY + 36);
   tft.print(customerName);
-  
-  // Department - large
-  if (latestOrder->department.length() > 0) {
-    tft.setTextColor(accentColor);
-    tft.setTextSize(2);
-    tft.setCursor(cardX + 10, nameY + 30);
-    String dept = latestOrder->department;
-    if (dept.length() > 15) {
-      dept = dept.substring(0, 13) + "..";
-    }
-    tft.print(dept);
+
+  // Department and waiting time
+  tft.setTextSize(1);
+  tft.setCursor(cardX + 16, cardY + 60);
+  String deptLine = group->department;
+  if (group->waiting_minutes > 0) {
+    deptLine += "  |  " + String((int)round(group->waiting_minutes)) + " dk";
   }
-  
-  // Drink information - very prominent (now shows multiple drinks)
-  tft.setTextColor(textColor);
+  tft.print(deptLine);
+
+  // Drinks summary
+  const int maxItemsDisplay = 8;
+  String drinkNames[maxItemsDisplay];
+  int drinkCounts[maxItemsDisplay];
+  int itemUniqueCount = 0;
+  bool truncated = false;
+
+  for (int i = 0; i < orderCount; i++) {
+    if (orders[i].order_group_id != group->group_id) continue;
+
+    String drinkName = orders[i].drink_type;
+    int quantityValue = orders[i].quantity > 0 ? orders[i].quantity : 1;
+    bool found = false;
+    for (int j = 0; j < itemUniqueCount; j++) {
+      if (drinkNames[j] == drinkName) {
+        drinkCounts[j] += quantityValue;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      if (itemUniqueCount < maxItemsDisplay) {
+        drinkNames[itemUniqueCount] = drinkName;
+        drinkCounts[itemUniqueCount] = quantityValue;
+        itemUniqueCount++;
+      } else {
+        truncated = true;
+      }
+    }
+  }
+
+  int lineY = cardY + 80;
+  tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
-  int drinkY = nameY + 60;
-  tft.setCursor(cardX + 10, drinkY);
-  
-  // Display all drinks with line breaks
-  String allDrinks = latestOrder->drinks;
-  int lineHeight = 16; // Height for each line
-  int currentY = drinkY;
-  int linesShown = 0;
-  const int maxLines = 3; // Maximum lines to show
-  
-  // Split drinks by newline and display each one
-  int startPos = 0;
-  int endPos = allDrinks.indexOf('\n');
-  
-  while (startPos < allDrinks.length() && linesShown < maxLines) {
-    String currentDrink;
-    if (endPos == -1) {
-      currentDrink = allDrinks.substring(startPos);
-    } else {
-      currentDrink = allDrinks.substring(startPos, endPos);
+  for (int j = 0; j < itemUniqueCount; j++) {
+    String line = drinkNames[j];
+    if (line.length() > 18) {
+      line = line.substring(0, 16) + "..";
     }
-    
-    // Limit line length
-    if (currentDrink.length() > 18) {
-      currentDrink = currentDrink.substring(0, 16) + "..";
-    }
-    
-    tft.setCursor(cardX + 10, currentY);
-    tft.print(currentDrink);
-    
-    currentY += lineHeight;
-    linesShown++;
-    
-    if (endPos == -1) break;
-    startPos = endPos + 1;
-    endPos = allDrinks.indexOf('\n', startPos);
+    line += "  x" + String(drinkCounts[j]);
+    tft.setCursor(cardX + 16, lineY);
+    tft.print(line);
+    lineY += 22;
   }
-  
-  // If there are more drinks, show "..."
-  if (allDrinks.indexOf('\n') != -1 && linesShown >= maxLines) {
-    tft.setCursor(cardX + 10, currentY);
-    tft.print("...");
-  }
-  
-  // Show total quantity
-  tft.setTextColor(accentColor);
-  tft.setTextSize(2);
-  tft.setCursor(cardX + cardW - 80, drinkY);
-  tft.print("x" + String(latestOrder->total_quantity));
-  
-  // Special instructions if any
-  if (latestOrder->special_instructions.length() > 0 && latestOrder->special_instructions != "null") {
-    tft.setTextColor(TFT_YELLOW);
+  if (truncated) {
     tft.setTextSize(1);
-    tft.setCursor(cardX + 10, drinkY + 25);
-    String instructions = latestOrder->special_instructions;
-    if (instructions.length() > 30) {
-      instructions = instructions.substring(0, 27) + "...";
+    tft.setCursor(cardX + 16, lineY);
+    tft.print("+ daha fazla icecek...");
+    lineY += 16;
+  }
+
+  // Total quantity and instructions (if any)
+  tft.setTextSize(1);
+  int summaryY = cardY + cardH - 72;
+  tft.setCursor(cardX + 16, summaryY);
+  tft.print("Toplam: " + String(group->total_quantity) + " adet");
+  summaryY += 14;
+
+  bool instructionsPrinted = false;
+  for (int i = 0; i < orderCount; i++) {
+    if (orders[i].order_group_id == group->group_id && orders[i].special_instructions.length() > 0) {
+      if (!instructionsPrinted) {
+        tft.setCursor(cardX + 16, summaryY);
+        tft.print("Notlar:");
+        summaryY += 12;
+        instructionsPrinted = true;
+      }
+      String note = orders[i].drink_type + ": " + orders[i].special_instructions;
+      if (note.length() > 34) {
+        note = note.substring(0, 32) + "..";
+      }
+      if (summaryY > cardY + cardH - 28) {
+        tft.setCursor(cardX + 24, summaryY);
+        tft.print("...");
+        break;
+      }
+      tft.setCursor(cardX + 24, summaryY);
+      tft.print(note);
+      summaryY += 12;
     }
-    tft.print("Not: " + instructions);
   }
-  
-  // Waiting time indicator - prominent
-  if (latestOrder->waiting_minutes > 0) {
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextSize(2);
-    tft.setCursor(cardX + cardW - 80, drinkY);
-    tft.print(String((int)latestOrder->waiting_minutes) + "dk");
-  }
-  
-  // Large status action button - make it bigger and more prominent
+
+  // Action button
   String buttonText = "";
   uint16_t buttonColor = TFT_GREEN;
-  if (latestOrder->status == "new") {
+  if (group->status == "new") {
     buttonText = "ALINDI";
     buttonColor = TFT_GREEN;
-  } else if (latestOrder->status == "alindi") {
+  } else if (group->status == "alindi") {
     buttonText = "HAZIR";
     buttonColor = TFT_BLUE;
   }
-  
-  if (buttonText != "") {
-    // Make button larger and more prominent
-    const int btnX = cardX + 15;  // Reduced margin
-    const int btnY = cardY + cardH - 45; // More height
-    const int btnW = cardW - 30;  // Wider button
-    const int btnH = 35;  // Taller button
-    
-    // Debug: Print button coordinates
-    Serial.println("Drawing button at: X=" + String(btnX) + "-" + String(btnX + btnW) + 
-                   ", Y=" + String(btnY) + "-" + String(btnY + btnH));
-    
+
+  if (buttonText.length() > 0) {
+    const int btnW = 120;
+    const int btnH = 36;
+    const int btnX = cardX + cardW - btnW - 16;
+    const int btnY = cardY + cardH - btnH - 20;
+
     tft.fillRoundRect(btnX, btnY, btnW, btnH, 8, buttonColor);
     tft.drawRoundRect(btnX, btnY, btnW, btnH, 8, TFT_WHITE);
-    tft.drawRoundRect(btnX+1, btnY+1, btnW-2, btnH-2, 7, TFT_WHITE);
-    tft.drawRoundRect(btnX+2, btnY+2, btnW-4, btnH-4, 6, TFT_WHITE); // Triple border
-    
     tft.setTextColor(TFT_WHITE);
     tft.setTextSize(2);
-    int textW = buttonText.length() * 12; // Approximate text width
-    tft.setCursor(btnX + (btnW - textW) / 2, btnY + 12);
+    int textW = buttonText.length() * 12;
+    tft.setCursor(btnX + (btnW - textW) / 2, btnY + 10);
     tft.print(buttonText);
   }
-  
-  // Show if there are more orders waiting
+
   if (groupedOrderCount > 1) {
     tft.setTextColor(TFT_CYAN);
     tft.setTextSize(1);
-    tft.setCursor(10, 210);
-    tft.print("+ " + String(groupedOrderCount - 1) + " daha siparis bekliyor");
+    tft.setCursor(12, cardY + cardH + 6);
+    tft.print("+ " + String(groupedOrderCount - 1) + " siparis daha bekliyor");
   }
-  
+
   // Footer with refresh info
   tft.setTextColor(TFT_DARKGREY);
   tft.setTextSize(1);
@@ -678,161 +740,112 @@ void drawScreen() {
   tft.print("Son guncelleme: " + String((millis() - lastFetch) / 1000) + "s once");
 }
 
-int findTouchedOrder(uint16_t x, uint16_t y) {
-  // In single card mode, we only show the first (latest) order
-  if (orderCount > 0) {
-    // Check if touch is anywhere on the main card area
-    const int cardX = 10;
-    const int cardY = 25;
-    const int cardW = 300;
-    const int cardH = 180;
-    
-    // Button coordinates - MUST match drawScreen() button positioning
-    const int btnX = cardX + 15;  // Same as in drawScreen
-    const int btnY = cardY + cardH - 45; // Same as in drawScreen
-    const int btnW = cardW - 30;  // Same as in drawScreen
-    const int btnH = 35;  // Same as in drawScreen
-    
-    // Debug: Print button coordinates and touch position
-    Serial.println("=== TOUCH DEBUG ===");
-    Serial.println("Touch at: (" + String(x) + ", " + String(y) + ")");
-    Serial.println("Button area: X=" + String(btnX) + "-" + String(btnX + btnW) + 
-                   ", Y=" + String(btnY) + "-" + String(btnY + btnH));
-    
-    // Make touch area more forgiving - expand detection zone
-    const int touchMargin = 30; // Larger margin for easier touching
-    if (x >= (btnX - touchMargin) && x <= (btnX + btnW + touchMargin) && 
-        y >= (btnY - touchMargin) && y <= (btnY + btnH + touchMargin)) {
-      Serial.println("BUTTON HIT! Returning order index 0");
-      return 0; // Return first order index (latest order)
-    } else {
-      Serial.println("Touch outside button area");
-      
-      // Also try detecting touch anywhere in the lower part of the card as fallback
-      if (y >= cardY + cardH - 80) { // Lower 80 pixels of card
-        Serial.println("FALLBACK: Touch in lower card area, accepting as button press");
-        return 0;
-      }
-    }
+int findTouchedGroup(uint16_t x, uint16_t y) {
+  if (groupedOrderCount == 0) return -1;
+
+  const int cardX = 10;
+  const int cardY = 25;
+  const int cardW = 300;
+  const int cardH = 190;
+  const int btnW = 120;
+  const int btnH = 36;
+  const int btnX = cardX + cardW - btnW - 16;
+  const int btnY = cardY + cardH - btnH - 20;
+
+  if (x < cardX || x > cardX + cardW || y < cardY || y > cardY + cardH) {
+    return -1;
   }
+
+  const GroupOrder* group = &groupedOrders[0];
+  if (!(group->status == "new" || group->status == "alindi")) {
+    return -1;
+  }
+
+  const int expandedBtnTop = cardY + cardH - 70;
+  if (y >= expandedBtnTop) {
+    return 0;
+  }
+
+  if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
+    return 0;
+  }
+
   return -1;
 }
 
-void updateOrderStatus(int orderIndex, const String& newStatus) {
-  if (orderIndex < 0 || orderIndex >= orderCount) return;
-  
+void updateGroupOrderStatus(int groupIndex, const String& newStatus) {
+  if (groupIndex < 0 || groupIndex >= groupedOrderCount) return;
+
+  GroupOrder* group = &groupedOrders[groupIndex];
+  String currentStatus = group->status;
+
   HTTPClient http;
-  String url = String(supabase_url) + "/rest/v1/drink_orders?id=eq." + orders[orderIndex].id;
-  
+  String url = String(supabase_url) + "/rest/v1/drink_orders?order_group_id=eq." + group->group_id;
+  url += "&status=eq." + currentStatus;
+
   WiFiClientSecure client;
-  client.setInsecure(); // Skip certificate verification
+  client.setInsecure();
   http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", supabase_key);
   http.addHeader("Authorization", "Bearer " + String(supabase_key));
+  http.addHeader("Prefer", "return=minimal");
   http.setTimeout(10000);
-  
+
   JsonDocument doc;
   doc["status"] = newStatus;
-  
+
   String jsonString;
   serializeJson(doc, jsonString);
-  
+
   int httpCode = http.sendRequest("PATCH", jsonString);
-  
+
   if (httpCode == 200 || httpCode == 204) {
-    Serial.println("Siparis durumu guncellendi: " + orders[orderIndex].id + " -> " + newStatus);
-    
-    // Update local status
-    orders[orderIndex].status = newStatus;
-    
-    // Stop buzzer if order was taken (alındı) or completed
-    if (newStatus == "alindi" || newStatus == "hazirlandi") {
-      if (buzzerActive && orders[orderIndex].id == lastOrderId) {
-        Serial.println("Sipariş alındı/hazırlandı, buzzer durduruldu");
-        buzzerActive = false;
-        hasNewOrder = false;
+    Serial.println("Grup durumu guncellendi: " + group->group_id + " -> " + newStatus);
+
+    for (int i = 0; i < orderCount; i++) {
+      if (orders[i].order_group_id == group->group_id) {
+        orders[i].status = newStatus;
       }
     }
-    
-    // If status is "hazirlandi", the order will be filtered out in next fetch
-    // No need to delete it, just let it remain in database for history
-    
-    // Refresh orders after a short delay
-    delay(500);
+
+    group->status = newStatus;
+    orderCount = 0;
+    groupedOrderCount = 0;
+
+    if (buzzerActive) {
+      Serial.println("Yeni siparis kalmadi, buzzer kapatiliyor");
+    }
+    buzzerActive = false;
+    hasNewOrder = false;
+    lastOrderId = "";
+
+    tft.fillRect(0, 20, 320, 210, TFT_BLACK);
+    tft.setTextColor(TFT_GREEN);
+    tft.setTextSize(2);
+    tft.setCursor(36, 110);
+    tft.print("Siparis alindi");
+    tft.setTextSize(1);
+    tft.setCursor(64, 140);
+    tft.print("Yeni siparisler aranıyor...");
+
     fetchOrders();
-    
+    lastFetch = millis();
   } else {
-    Serial.println("Durum guncelleme hatasi: " + String(httpCode));
-    
-    // Show error on screen briefly
+    Serial.println("Grup durum guncelleme hatasi: " + String(httpCode));
+
     tft.fillRect(0, 200, 320, 40, TFT_RED);
     tft.setTextColor(TFT_WHITE);
     tft.setTextSize(1);
     tft.setCursor(10, 210);
-    tft.print("Guncelleme hatasi: " + String(httpCode));
+    tft.print("Grup guncelleme hatasi: " + String(httpCode));
     tft.setCursor(10, 220);
     tft.print("Tekrar deneniyor...");
     delay(2000);
     drawScreen();
   }
-  
-  http.end();
-}
 
-// Update all orders belonging to a customer group
-void updateGroupOrderStatus(String customerName, String currentStatus, String newStatus) {
-  Serial.println("Updating group status for customer: " + customerName + " from " + currentStatus + " to " + newStatus);
-  
-  // Stop buzzer if group order was taken (alındı) or completed
-  if ((newStatus == "alindi" || newStatus == "hazirlandi") && buzzerActive) {
-    String currentGroupId = customerName + "_" + groupedOrders[0].created_at + "_" + currentStatus;
-    if (currentGroupId == lastOrderId) {
-      Serial.println("Grup siparişi alındı/hazırlandı, buzzer durduruldu: " + customerName);
-      buzzerActive = false;
-      hasNewOrder = false;
-    }
-  }
-  
-  // Find all orders belonging to this customer with same status
-  for (int i = 0; i < orderCount; i++) {
-    if (orders[i].customer_name == customerName && orders[i].status == currentStatus) {
-      Serial.println("Updating order " + String(i) + ": " + orders[i].drink_type);
-      
-      // Update individual order without triggering buzzer multiple times
-      HTTPClient http;
-      String url = String(supabase_url) + "/rest/v1/drink_orders?id=eq." + orders[i].id;
-      
-      WiFiClientSecure client;
-      client.setInsecure();
-      http.begin(client, url);
-      http.addHeader("Content-Type", "application/json");
-      http.addHeader("apikey", supabase_key);
-      http.addHeader("Authorization", "Bearer " + String(supabase_key));
-      http.setTimeout(10000);
-      
-      JsonDocument doc;
-      doc["status"] = newStatus;
-      
-      String jsonString;
-      serializeJson(doc, jsonString);
-      
-      int httpCode = http.sendRequest("PATCH", jsonString);
-      
-      if (httpCode == 200 || httpCode == 204) {
-        Serial.println("Individual order status updated: " + orders[i].id + " -> " + newStatus);
-        orders[i].status = newStatus;
-      } else {
-        Serial.println("Failed to update individual order: " + String(httpCode));
-      }
-      
-      http.end();
-    }
-  }
-  
-  // Refresh orders after updating all items in group
-  delay(500);
-  fetchOrders();
+  http.end();
 }
 
 void handleTouch(uint16_t x, uint16_t y) {
@@ -842,49 +855,41 @@ void handleTouch(uint16_t x, uint16_t y) {
   Serial.print(", ");
   Serial.println(y);
   
-  // Debug: Show order count and status
-  Serial.println("Grouped order count: " + String(groupedOrderCount));
-  if (groupedOrderCount > 0) {
-    Serial.println("Latest group status: " + groupedOrders[0].status);
-    Serial.println("Latest group ID: " + groupedOrders[0].id);
-    Serial.println("Latest group drinks: " + groupedOrders[0].drinks);
-  }
+  int touchedGroup = findTouchedGroup(x, y);
+  Serial.println("findTouchedGroup returned: " + String(touchedGroup));
   
-  int touchedOrder = findTouchedOrder(x, y);
-  Serial.println("findTouchedOrder returned: " + String(touchedOrder));
-  
-  if (touchedOrder >= 0 && groupedOrderCount > 0) {
-    // We touched the main card (should be index 0)
-    GroupOrder* groupOrder = &groupedOrders[0];
-    String currentStatus = groupOrder->status;
+  if (touchedGroup >= 0 && touchedGroup < groupedOrderCount) {
+    GroupOrder* group = &groupedOrders[touchedGroup];
+    String currentStatus = group->status;
     String nextStatus = "";
-    
-    Serial.println("Processing touch for group with status: " + currentStatus);
-    
+
     if (currentStatus == "new") {
       nextStatus = "alindi";
-      Serial.println("Grup siparis alindi: " + groupOrder->customer_name);
     } else if (currentStatus == "alindi") {
       nextStatus = "hazirlandi";
-      Serial.println("Grup siparis hazir: " + groupOrder->customer_name);
     }
-    
-    if (nextStatus != "") {
-      Serial.println("Updating group status to: " + nextStatus);
+
+    if (nextStatus.length() > 0) {
+      const uint16_t feedbackBg = (nextStatus == "alindi") ? TFT_WHITE : TFT_GREEN;
+      const uint16_t feedbackText = (nextStatus == "alindi") ? TFT_BLACK : TFT_BLACK;
+      const String feedbackMessage = (nextStatus == "alindi") ? "Hazirlaniyor" : "Hazir";
+
+      showGroupTapFeedback(feedbackMessage, feedbackBg, feedbackText);
       
-      // Visual feedback - highlight the entire card
-      const int cardX = 10;
-      const int cardY = 25;
-      const int cardW = 300;
-      const int cardH = 180;
-      
-      tft.drawRoundRect(cardX-2, cardY-2, cardW+4, cardH+4, 10, TFT_WHITE);
-      tft.drawRoundRect(cardX-1, cardY-1, cardW+2, cardH+2, 9, TFT_WHITE);
-      
-      // Update all orders belonging to this customer with same status
-      updateGroupOrderStatus(groupOrder->customer_name, groupOrder->status, nextStatus);
+      // Change card color to blue immediately for feedback
+      if (nextStatus == "alindi") {
+        const int cardX = 10;
+        const int cardY = 25;
+        const int cardW = 300;
+        const int cardH = 190;
+        tft.fillRoundRect(cardX, cardY, cardW, cardH, 10, TFT_BLUE);
+        drawScreen(); // Redraw contents over new blue background
+        delay(1000); // Keep it blue for a second
+      }
+
+      updateGroupOrderStatus(touchedGroup, nextStatus);
     } else {
-      Serial.println("No status change needed or invalid status");
+      Serial.println("No status change for this order");
     }
   } else {
     // Touch outside orders - refresh manually
@@ -907,55 +912,76 @@ void buzzerBeep(int count, int duration, int pause) {
 }
 
 void checkNewOrderBuzzer() {
-  // Check if there's a new grouped order that needs initial buzzing
-  if (groupedOrderCount > 0 && groupedOrders[0].status == "new") {
-    // Use customer name + status as unique identifier for group orders
-    String currentGroupId = groupedOrders[0].customer_name + "_" + groupedOrders[0].created_at + "_" + groupedOrders[0].status;
-    
-    // If this is a different group than the last one we processed
-    if (currentGroupId != lastOrderId) {
-      Serial.println("Yeni grup siparişi algılandı: " + groupedOrders[0].customer_name + " (Toplam: " + String(groupedOrders[0].total_quantity) + " içecek)");
-      
-      // Trigger initial 3 beeps for new group order
-      buzzerBeep(3, 200, 300);
-      
-      // Update tracking variables
-      lastOrderId = currentGroupId;
-      initialBuzzDone = true;
-      buzzerActive = true;
-      lastBuzzerTime = millis();
-      hasNewOrder = true;
-      
-      Serial.println("İlk 3 bip tamamlandı, periyodik bip başlatıldı - Grup: " + groupedOrders[0].customer_name);
+  int newGroupIndex = -1;
+
+  for (int i = 0; i < groupedOrderCount; i++) {
+    if (groupedOrders[i].status == "new") {
+      newGroupIndex = i;
+      break;
     }
+  }
+
+  if (newGroupIndex >= 0) {
+    GroupOrder* group = &groupedOrders[newGroupIndex];
+    String currentGroupId = group->group_id;
+
+    if (currentGroupId != lastOrderId || !buzzerActive) {
+      Serial.println("Yeni grup siparisi algilandi: " + group->customer_name + " (" + String(group->total_quantity) + " adet)");
+      buzzerBeep(3, 200, 300);
+      lastBuzzerTime = millis();
+    }
+
+    lastOrderId = currentGroupId;
+    hasNewOrder = true;
+    buzzerActive = true;
+  } else {
+    if (buzzerActive) {
+      Serial.println("Yeni grup siparisi kalmadi, buzzer durduruldu");
+    }
+    hasNewOrder = false;
+    buzzerActive = false;
+    lastOrderId = "";
   }
 }
 
 void handlePeriodicBuzzer() {
-  // Only buzz if we have an active new group order
-  if (buzzerActive && groupedOrderCount > 0 && groupedOrders[0].status == "new") {
-    // Check if it's time for periodic beep (1 minute intervals)
-    if (millis() - lastBuzzerTime >= BUZZER_INTERVAL) {
-      Serial.println("Periyodik bip - grup siparişi hala yeni durumda: " + groupedOrders[0].customer_name);
-      buzzerBeep(1, 500, 0); // Single longer beep for periodic reminder
-      lastBuzzerTime = millis();
+  if (!buzzerActive) {
+    return;
+  }
+
+  bool anyNew = false;
+  bool trackedStillNew = false;
+  String firstNewGroupId = "";
+
+  for (int i = 0; i < groupedOrderCount; i++) {
+    if (groupedOrders[i].status == "new") {
+      if (!anyNew) {
+        firstNewGroupId = groupedOrders[i].group_id;
+      }
+      anyNew = true;
+      if (groupedOrders[i].group_id == lastOrderId) {
+        trackedStillNew = true;
+      }
     }
-  } else if (groupedOrderCount > 0 && groupedOrders[0].status != "new") {
-    // Group order status changed, stop buzzing
-    if (buzzerActive) {
-      Serial.println("Grup sipariş durumu değişti, bip durduruldu: " + groupedOrders[0].customer_name);
-      buzzerActive = false;
-      hasNewOrder = false;
-    }
-  } else if (groupedOrderCount == 0) {
-    // No group orders, reset buzzer state
-    if (buzzerActive) {
-      Serial.println("Grup sipariş kalmadı, bip durumu sıfırlandı");
-      buzzerActive = false;
-      hasNewOrder = false;
-      lastOrderId = "";
-      initialBuzzDone = false;
-    }
+  }
+
+  if (!anyNew) {
+    buzzerActive = false;
+    hasNewOrder = false;
+    lastOrderId = "";
+    return;
+  }
+
+  hasNewOrder = true;
+
+  if (!trackedStillNew) {
+    lastOrderId = firstNewGroupId;
+  }
+
+  if (millis() - lastBuzzerTime >= BUZZER_INTERVAL) {
+    Serial.println("Periyodik bip - yeni grup siparisleri hala bekliyor");
+    buzzerBeep(1, 500, 0);
+    lastBuzzerTime = millis();
   }
 }
 
