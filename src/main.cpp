@@ -4,6 +4,9 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
+#include <WebServer.h>
+#include <Preferences.h>
+#include <DNSServer.h>
 #include <math.h>
 #include "config.h"
 
@@ -114,9 +117,461 @@ LGFX_CYD tft;
 // Buzzer configuration
 const int BUZZER_PIN = 22;
 
-// WiFi credentials
-const char* ssid = WIFI_SSID;
-const char* password = WIFI_PASSWORD;
+// WiFi AP Configuration
+const char* AP_SSID = "CYD-WiFi-Setup";
+const char* AP_PASSWORD = "12345678";
+const IPAddress AP_IP(192, 168, 4, 1);
+const IPAddress AP_GATEWAY(192, 168, 4, 1);
+const IPAddress AP_SUBNET(255, 255, 255, 0);
+
+// WiFi Management
+WebServer server(80);
+DNSServer dnsServer;
+Preferences preferences;
+bool apMode = false;
+bool configMode = false;
+
+// WiFi credentials storage
+struct StoredNetwork {
+  char ssid[32];
+  char password[64];
+  bool enabled;
+  int priority;
+};
+
+StoredNetwork storedNetworks[MAX_WIFI_NETWORKS];
+int storedNetworkCount = 0;
+
+// WiFi connection status variables
+bool wifiConnected = false;
+int currentNetworkIndex = 0;
+unsigned long lastWifiCheck = 0;
+const unsigned long WIFI_CHECK_INTERVAL = 30000; // Check every 30 seconds
+const unsigned long WIFI_CONNECT_TIMEOUT = 10000; // 10 seconds timeout per network
+
+// Function declarations
+void loadStoredNetworks();
+void saveStoredNetworks();
+bool addNetwork(const char* ssid, const char* password);
+bool connectToWiFiNetwork(const char* networkSSID, const char* networkPassword, int timeoutMs);
+bool autoConnectWiFi();
+void startAPMode();
+void displayAPModeInfo();
+void checkWiFiConnection();
+void handleRoot();
+void handleScan();
+void handleConnect();
+
+// WiFi Credentials Storage Functions
+void loadStoredNetworks() {
+  preferences.begin("wifi-creds", false);
+  storedNetworkCount = preferences.getInt("count", 0);
+  
+  Serial.printf("Loading %d stored networks\n", storedNetworkCount);
+  
+  for (int i = 0; i < storedNetworkCount && i < MAX_WIFI_NETWORKS; i++) {
+    String ssidKey = "ssid" + String(i);
+    String passKey = "pass" + String(i);
+    String enabledKey = "en" + String(i);
+    String priorityKey = "pr" + String(i);
+    
+    preferences.getString(ssidKey.c_str(), storedNetworks[i].ssid, sizeof(storedNetworks[i].ssid));
+    preferences.getString(passKey.c_str(), storedNetworks[i].password, sizeof(storedNetworks[i].password));
+    storedNetworks[i].enabled = preferences.getBool(enabledKey.c_str(), true);
+    storedNetworks[i].priority = preferences.getInt(priorityKey.c_str(), i);
+    
+    Serial.printf("Loaded network %d: %s (enabled: %s)\n", i, storedNetworks[i].ssid, storedNetworks[i].enabled ? "yes" : "no");
+  }
+  
+  preferences.end();
+  
+  // If no stored networks, load defaults from config.h
+  if (storedNetworkCount == 0) {
+    Serial.println("No stored networks found, loading defaults");
+    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
+      if (strlen(wifi_networks[i].ssid) > 0) {
+        strncpy(storedNetworks[i].ssid, wifi_networks[i].ssid, sizeof(storedNetworks[i].ssid));
+        strncpy(storedNetworks[i].password, wifi_networks[i].password, sizeof(storedNetworks[i].password));
+        storedNetworks[i].enabled = true;
+        storedNetworks[i].priority = i;
+        storedNetworkCount++;
+      }
+    }
+    saveStoredNetworks(); // Save defaults to preferences
+  }
+}
+
+void saveStoredNetworks() {
+  preferences.begin("wifi-creds", false);
+  preferences.putInt("count", storedNetworkCount);
+  
+  for (int i = 0; i < storedNetworkCount; i++) {
+    String ssidKey = "ssid" + String(i);
+    String passKey = "pass" + String(i);
+    String enabledKey = "en" + String(i);
+    String priorityKey = "pr" + String(i);
+    
+    preferences.putString(ssidKey.c_str(), storedNetworks[i].ssid);
+    preferences.putString(passKey.c_str(), storedNetworks[i].password);
+    preferences.putBool(enabledKey.c_str(), storedNetworks[i].enabled);
+    preferences.putInt(priorityKey.c_str(), storedNetworks[i].priority);
+  }
+  
+  preferences.end();
+  Serial.printf("Saved %d networks to storage\n", storedNetworkCount);
+}
+
+bool addNetwork(const char* ssid, const char* password) {
+  if (storedNetworkCount >= MAX_WIFI_NETWORKS) {
+    Serial.println("Maximum networks reached");
+    return false;
+  }
+  
+  // Check if network already exists
+  for (int i = 0; i < storedNetworkCount; i++) {
+    if (strcmp(storedNetworks[i].ssid, ssid) == 0) {
+      // Update existing network
+      strncpy(storedNetworks[i].password, password, sizeof(storedNetworks[i].password));
+      storedNetworks[i].enabled = true;
+      saveStoredNetworks();
+      Serial.printf("Updated existing network: %s\n", ssid);
+      return true;
+    }
+  }
+  
+  // Add new network
+  strncpy(storedNetworks[storedNetworkCount].ssid, ssid, sizeof(storedNetworks[storedNetworkCount].ssid));
+  strncpy(storedNetworks[storedNetworkCount].password, password, sizeof(storedNetworks[storedNetworkCount].password));
+  storedNetworks[storedNetworkCount].enabled = true;
+  storedNetworks[storedNetworkCount].priority = storedNetworkCount;
+  storedNetworkCount++;
+  
+  saveStoredNetworks();
+  Serial.printf("Added new network: %s\n", ssid);
+  return true;
+}
+
+// Web Server Handlers
+void handleRoot() {
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'>";
+  html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+  html += "<title>CYD WiFi Setup</title><style>";
+  html += "body{font-family:Arial,sans-serif;margin:0;padding:20px;background-color:#f0f0f0;}";
+  html += ".container{max-width:600px;margin:0 auto;background:white;padding:20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}";
+  html += "h1{color:#333;text-align:center;}";
+  html += ".network-item{padding:10px;margin:5px 0;background:#f9f9f9;border-radius:5px;cursor:pointer;border:2px solid transparent;}";
+  html += ".network-item:hover{background:#e9e9e9;}";
+  html += ".network-item.selected{border-color:#007bff;background:#e7f3ff;}";
+  html += ".signal-strength{float:right;font-weight:bold;}";
+  html += ".form-group{margin:15px 0;}";
+  html += "label{display:block;margin-bottom:5px;font-weight:bold;}";
+  html += "input[type='text'],input[type='password']{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;font-size:16px;box-sizing:border-box;}";
+  html += "button{background:#007bff;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px;width:100%;margin-top:10px;}";
+  html += "button:hover{background:#0056b3;}";
+  html += ".status{margin-top:15px;padding:10px;border-radius:5px;display:none;}";
+  html += ".success{background:#d4edda;color:#155724;border:1px solid #c3e6cb;}";
+  html += ".error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;}";
+  html += "</style></head><body>";
+  html += "<div class='container'><h1>CYD WiFi Setup</h1>";
+  html += "<p>Select a WiFi network and enter the password to connect your device.</p>";
+  html += "<div id='networks'><button onclick='scanNetworks()'>Scan for Networks</button></div>";
+  html += "<div class='form-group'><label for='ssid'>Network Name (SSID):</label>";
+  html += "<input type='text' id='ssid' placeholder='Enter WiFi network name'></div>";
+  html += "<div class='form-group'><label for='password'>Password:</label>";
+  html += "<input type='password' id='password' placeholder='Enter WiFi password'></div>";
+  html += "<button onclick='connectWiFi()'>Connect to WiFi</button>";
+  html += "<div id='status' class='status'></div></div>";
+  
+  // JavaScript
+  html += "<script>";
+  html += "let selectedNetwork='';";
+  html += "function scanNetworks(){";
+  html += "document.getElementById('networks').innerHTML='<p>Scanning for networks...</p>';";
+  html += "fetch('/scan').then(response=>response.json()).then(data=>{";
+  html += "let html='<h3>Available Networks:</h3>';";
+  html += "data.networks.forEach(network=>{";
+  html += "const strength=network.rssi>-50?'Strong':network.rssi>-70?'Good':'Weak';";
+  html += "html+='<div class=\"network-item\" onclick=\"selectNetwork(\\''+network.ssid+'\\')\">';";
+  html += "html+=network.ssid+'<span class=\"signal-strength\">'+strength+' '+network.rssi+'dBm</span></div>';";
+  html += "});";
+  html += "document.getElementById('networks').innerHTML=html;";
+  html += "}).catch(error=>{";
+  html += "console.error('Error:',error);";
+  html += "document.getElementById('networks').innerHTML='<p>Error scanning networks</p>';";
+  html += "});}";
+  html += "function selectNetwork(ssid){";
+  html += "selectedNetwork=ssid;";
+  html += "document.getElementById('ssid').value=ssid;";
+  html += "document.querySelectorAll('.network-item').forEach(item=>{";
+  html += "item.classList.remove('selected');});";
+  html += "event.target.classList.add('selected');}";
+  html += "function connectWiFi(){";
+  html += "const ssid=document.getElementById('ssid').value;";
+  html += "const password=document.getElementById('password').value;";
+  html += "if(!ssid){showStatus('Please enter a network name','error');return;}";
+  html += "showStatus('Connecting to '+ssid+'...','success');";
+  html += "fetch('/connect',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},";
+  html += "body:'ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(password)})";
+  html += ".then(response=>response.json()).then(data=>{";
+  html += "if(data.success){showStatus('Successfully connected! Device will restart in 5 seconds.','success');";
+  html += "setTimeout(()=>{window.location.reload();},5000);}";
+  html += "else{showStatus('Failed to connect: '+data.message,'error');}";
+  html += "}).catch(error=>{console.error('Error:',error);showStatus('Connection error occurred','error');});}";
+  html += "function showStatus(message,type){";
+  html += "const statusDiv=document.getElementById('status');";
+  html += "statusDiv.textContent=message;statusDiv.className='status '+type;statusDiv.style.display='block';}";
+  html += "window.onload=function(){scanNetworks();};";
+  html += "</script></body></html>";
+  
+  server.send(200, "text/html", html);
+}
+
+void handleScan() {
+  WiFi.scanDelete();
+  int networkCount = WiFi.scanNetworks();
+  
+  String json = "{\"networks\":[";
+  for (int i = 0; i < networkCount; i++) {
+    if (i > 0) json += ",";
+    json += "{";
+    json += "\"ssid\":\"" + WiFi.SSID(i) + "\",";
+    json += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
+    json += "\"encryption\":" + String(WiFi.encryptionType(i));
+    json += "}";
+  }
+  json += "]}";
+  
+  server.send(200, "application/json", json);
+}
+
+void handleConnect() {
+  String ssid = server.arg("ssid");
+  String password = server.arg("password");
+  
+  if (ssid.length() == 0) {
+    server.send(400, "application/json", "{\"success\":false,\"message\":\"SSID required\"}");
+    return;
+  }
+  
+  // Add network to stored networks
+  addNetwork(ssid.c_str(), password.c_str());
+  
+  server.send(200, "application/json", "{\"success\":true,\"message\":\"Network saved, attempting connection...\"}");
+  
+  // Set flag to restart and try connection
+  configMode = false;
+  
+  // Try connecting to the new network
+  if (connectToWiFiNetwork(ssid.c_str(), password.c_str(), 15000)) {
+    wifiConnected = true;
+    apMode = false;
+    Serial.println("Successfully connected to new network");
+  } else {
+    Serial.println("Failed to connect to new network, staying in AP mode");
+  }
+}
+
+// Function to try connecting to a specific WiFi network
+bool connectToWiFiNetwork(const char* networkSSID, const char* networkPassword, int timeoutMs = 10000) {
+  Serial.printf("Trying to connect to: %s\n", networkSSID);
+  
+  // Display connection attempt on screen
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(10, 50);
+  tft.printf("Connecting to:\n%s", networkSSID);
+  
+  WiFi.begin(networkSSID, networkPassword);
+  
+  unsigned long startTime = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < timeoutMs) {
+    delay(500);
+    Serial.print(".");
+    
+    // Update display with dots
+    tft.setCursor(10, 80);
+    for (int i = 0; i < ((millis() - startTime) / 500) % 4; i++) {
+      tft.print(".");
+    }
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("\nConnected to %s\n", networkSSID);
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    
+    // Display success
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_GREEN);
+    tft.setCursor(10, 50);
+    tft.printf("Connected to:\n%s\nIP: %s", networkSSID, WiFi.localIP().toString().c_str());
+    delay(2000);
+    
+    return true;
+  } else {
+    Serial.printf("\nFailed to connect to %s\n", networkSSID);
+    return false;
+  }
+}
+
+// Function to auto-connect to available WiFi networks
+bool autoConnectWiFi() {
+  Serial.println("Starting WiFi auto-connection...");
+  
+  // Display scanning message
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_YELLOW);
+  tft.setTextSize(2);
+  tft.setCursor(10, 50);
+  tft.print("Scanning WiFi...");
+  
+  // Scan for available networks
+  int networkCount = WiFi.scanNetworks();
+  Serial.printf("Found %d networks\n", networkCount);
+  
+  // Try each stored network in priority order
+  for (int priority = 0; priority < storedNetworkCount; priority++) {
+    for (int i = 0; i < storedNetworkCount; i++) {
+      if (!storedNetworks[i].enabled || storedNetworks[i].priority != priority) continue;
+      
+      const char* networkSSID = storedNetworks[i].ssid;
+      const char* networkPassword = storedNetworks[i].password;
+      
+      if (strlen(networkSSID) == 0) continue; // Skip empty entries
+      
+      // Check if this network is available
+      bool networkAvailable = false;
+      for (int j = 0; j < networkCount; j++) {
+        if (WiFi.SSID(j) == String(networkSSID)) {
+          networkAvailable = true;
+          break;
+        }
+      }
+      
+      if (networkAvailable) {
+        Serial.printf("Network %s is available, attempting connection...\n", networkSSID);
+        
+        if (connectToWiFiNetwork(networkSSID, networkPassword, WIFI_CONNECT_TIMEOUT)) {
+          currentNetworkIndex = i;
+          wifiConnected = true;
+          apMode = false;
+          
+          // Configure DNS servers
+          WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), IPAddress(8, 8, 8, 8), IPAddress(1, 1, 1, 1));
+          delay(1000);
+          
+          return true;
+        }
+      } else {
+        Serial.printf("Network %s not available\n", networkSSID);
+      }
+    }
+  }
+  
+  // If no networks worked, start AP mode
+  Serial.println("Failed to connect to any WiFi network, starting AP mode");
+  startAPMode();
+  return false;
+}
+
+void startAPMode() {
+  Serial.println("Starting WiFi Access Point mode...");
+  
+  // Stop any existing WiFi connection
+  WiFi.disconnect();
+  delay(1000);
+  
+  // Configure and start AP
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET);
+  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  
+  // Start DNS server for captive portal
+  dnsServer.start(53, "*", AP_IP);
+  
+  // Setup web server routes
+  server.on("/", handleRoot);
+  server.on("/scan", handleScan);
+  server.on("/connect", HTTP_POST, handleConnect);
+  
+  server.begin();
+  
+  apMode = true;
+  configMode = true;
+  
+  // Display AP mode info on screen
+  displayAPModeInfo();
+  
+  Serial.printf("AP Mode started. SSID: %s, Password: %s\n", AP_SSID, AP_PASSWORD);
+  Serial.printf("IP Address: %s\n", WiFi.softAPIP().toString().c_str());
+}
+
+void displayAPModeInfo() {
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_CYAN);
+  tft.setTextSize(1);
+  
+  tft.setCursor(10, 20);
+  tft.print("WiFi Setup Mode");
+  
+  tft.setTextColor(TFT_WHITE);
+  tft.setCursor(10, 50);
+  tft.printf("1. Connect to WiFi:\n   %s", AP_SSID);
+  
+  tft.setCursor(10, 80);
+  tft.printf("2. Password: %s", AP_PASSWORD);
+  
+  tft.setCursor(10, 110);
+  tft.print("3. Open web browser");
+  
+  tft.setCursor(10, 140);
+  tft.printf("4. Go to: %s", AP_IP.toString().c_str());
+  
+  tft.setTextColor(TFT_YELLOW);
+  tft.setCursor(10, 180);
+  tft.print("Configure your WiFi");
+  tft.setCursor(10, 200);
+  tft.print("networks there!");
+}
+
+// Function to check and maintain WiFi connection
+void checkWiFiConnection() {
+  unsigned long currentTime = millis();
+  
+  // Handle AP mode web server
+  if (apMode) {
+    dnsServer.processNextRequest();
+    server.handleClient();
+    return;
+  }
+  
+  // Check WiFi status periodically
+  if (currentTime - lastWifiCheck > WIFI_CHECK_INTERVAL) {
+    lastWifiCheck = currentTime;
+    
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi connection lost, attempting to reconnect...");
+      wifiConnected = false;
+      
+      // Try to reconnect to current network first
+      if (currentNetworkIndex < storedNetworkCount) {
+        const char* currentSSID = storedNetworks[currentNetworkIndex].ssid;
+        const char* currentPassword = storedNetworks[currentNetworkIndex].password;
+        
+        if (connectToWiFiNetwork(currentSSID, currentPassword, 5000)) {
+          wifiConnected = true;
+          return;
+        }
+      }
+      
+      // If current network fails, try auto-connect again
+      autoConnectWiFi();
+    } else {
+      wifiConnected = true;
+    }
+  }
+}
 
 // Supabase configuration - CORRECT URL AND KEY
 const char* supabase_url = SUPABASE_URL;
@@ -215,70 +670,65 @@ void setup() {
 
   tft.fillScreen(TFT_BLACK);
   
-  // Connect to WiFi
-  WiFi.begin(ssid, password);
-  tft.setTextColor(TFT_WHITE);
-  tft.setTextSize(2);
-  tft.setCursor(10, 50);
-  tft.print("WiFi Baglaniyor...");
+  // Load stored WiFi networks
+  loadStoredNetworks();
   
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  
-  // Configure DNS servers - Try multiple approaches
-  WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), IPAddress(8, 8, 8, 8), IPAddress(1, 1, 1, 1));
-  delay(1000);
-  
-  Serial.println("\nWiFi Baglandi!");
-  Serial.print("IP Adresi: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("Gateway: ");
-  Serial.println(WiFi.gatewayIP());
-  Serial.print("DNS: ");
-  Serial.println(WiFi.dnsIP());
-  
-  // Test basic internet connectivity first
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_YELLOW);
-  tft.setTextSize(1);
-  tft.setCursor(10, 50);
-  tft.print("Internet baglantisi test ediliyor...");
-  
-  // Test with a simple HTTP request to Google (HTTP, not HTTPS)
-  HTTPClient testHttp;
-  WiFiClient testClient;
-  testHttp.begin(testClient, "http://httpbin.org/get");
-  testHttp.setTimeout(5000);
-  int testCode = testHttp.GET();
-  testHttp.end();
-  
-  Serial.print("HTTP test sonucu: ");
-  Serial.println(testCode);
-  
-  if (testCode > 0) {
-    Serial.println("Internet baglantisi OK");
-    tft.setCursor(10, 70);
-    tft.setTextColor(TFT_GREEN);
-    tft.print("Internet baglantisi OK");
+  // Connect to WiFi using auto-connection system
+  if (!autoConnectWiFi()) {
+    Serial.println("No WiFi networks available, started AP mode");
+    // In AP mode, continue with limited functionality
+    // Don't exit - let the user configure WiFi
   } else {
-    Serial.println("Internet baglantisi PROBLEM");
-    tft.setCursor(10, 70);
-    tft.setTextColor(TFT_RED);
-    tft.print("Internet baglantisi PROBLEM");
+    // WiFi connected successfully, continue with normal setup
+    Serial.println("\nWiFi Connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Gateway: ");
+    Serial.println(WiFi.gatewayIP());
+    Serial.print("DNS: ");
+    Serial.println(WiFi.dnsIP());
+    
+    // Test basic internet connectivity first
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_YELLOW);
+    tft.setTextSize(1);
+    tft.setCursor(10, 50);
+    tft.print("Internet baglantisi test ediliyor...");
+    
+    // Test with a simple HTTP request to Google (HTTP, not HTTPS)
+    HTTPClient testHttp;
+    WiFiClient testClient;
+    testHttp.begin(testClient, "http://httpbin.org/get");
+    testHttp.setTimeout(5000);
+    int testCode = testHttp.GET();
+    testHttp.end();
+    
+    Serial.print("HTTP test sonucu: ");
+    Serial.println(testCode);
+    
+    if (testCode > 0) {
+      Serial.println("Internet baglantisi OK");
+      tft.setCursor(10, 70);
+      tft.setTextColor(TFT_GREEN);
+      tft.print("Internet baglantisi OK");
+    } else {
+      Serial.println("Internet baglantisi PROBLEM");
+      tft.setCursor(10, 70);
+      tft.setTextColor(TFT_RED);
+      tft.print("Internet baglantisi PROBLEM");
+    }
+    
+    delay(2000);
+    
+    // Initial screen
+    drawScreen();
+    
+    // Fetch initial orders
+    fetchOrders();
   }
-  
-  delay(2000);
-  
-  // Initial screen
-  drawScreen();
-  
-  // Fetch initial orders
-  fetchOrders();
 }
 void fetchOrders() {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!wifiConnected || WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi baglantisi yok!");
     return;
   }
@@ -512,7 +962,7 @@ void drawScreen() {
   
   // Show WiFi status and order count
   tft.setCursor(200, 5);
-  if (WiFi.status() == WL_CONNECTED) {
+  if (wifiConnected && WiFi.status() == WL_CONNECTED) {
     tft.setTextColor(TFT_GREEN);
     tft.print("WiFi:OK");
   } else {
@@ -1002,22 +1452,32 @@ void loop() {
   uint16_t x, y;
   
   if (tft.getTouch(&x, &y)) {
-    // Show touch coordinates on screen for debugging
-    tft.fillRect(250, 210, 70, 25, TFT_BLACK); // Clear previous coordinates
-    tft.setTextColor(TFT_YELLOW);
-    tft.setTextSize(1);
-    tft.setCursor(250, 210);
-    tft.print("T:" + String(x) + "," + String(y));
-    
-    handleTouch(x, y);
+    if (!apMode) {
+      // Show touch coordinates on screen for debugging
+      tft.fillRect(250, 210, 70, 25, TFT_BLACK); // Clear previous coordinates
+      tft.setTextColor(TFT_YELLOW);
+      tft.setTextSize(1);
+      tft.setCursor(250, 210);
+      tft.print("T:" + String(x) + "," + String(y));
+      
+      handleTouch(x, y);
+    } else {
+      // In AP mode, touching screen shows connection info again
+      displayAPModeInfo();
+    }
     delay(300); // Debounce touch
   }
   
-  // Handle periodic buzzer for new orders
-  handlePeriodicBuzzer();
+  // Handle periodic buzzer for new orders (only if not in AP mode)
+  if (!apMode) {
+    handlePeriodicBuzzer();
+  }
   
-  // Automatic refresh every FETCH_INTERVAL
-  if (millis() - lastFetch > FETCH_INTERVAL) {
+  // Check and maintain WiFi connection
+  checkWiFiConnection();
+  
+  // Automatic refresh every FETCH_INTERVAL (only if WiFi is connected)
+  if (wifiConnected && !apMode && millis() - lastFetch > FETCH_INTERVAL) {
     fetchOrders();
     lastFetch = millis();
   }

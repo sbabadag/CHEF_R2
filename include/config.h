@@ -2,9 +2,28 @@
 #define CONFIG_H
 
 // WiFi Configuration
-// Update these with your actual WiFi credentials
+// Primary WiFi credentials
 #define WIFI_SSID "sbabadagip"
 #define WIFI_PASSWORD "92929292"
+
+// Backup WiFi networks - Add your backup networks here
+// Maximum 5 networks supported
+#define MAX_WIFI_NETWORKS 5
+
+// WiFi network structure
+struct WiFiNetwork {
+  const char* ssid;
+  const char* password;
+};
+
+// Define backup WiFi networks (modify these with your actual backup networks)
+static const WiFiNetwork wifi_networks[MAX_WIFI_NETWORKS] = {
+  {WIFI_SSID, WIFI_PASSWORD},              // Primary network
+  {"CHEF_HOTSPOT", "chef1234"},             // Backup hotspot
+  {"AndroidHotspot", "12345678"},           // Mobile hotspot
+  {"FREE_WIFI", ""},                        // Open network
+  {"BACKUP_NETWORK", "backup123"}           // Another backup
+};
 
 // Supabase Configuration
 // Your actual Supabase project details
