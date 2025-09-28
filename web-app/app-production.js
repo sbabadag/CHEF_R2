@@ -437,6 +437,7 @@ function hideLoading() {
 }
 
 function showToast(message, type = 'info') {
+    console.log(`🍞 showToast called: "${message}" (${type})`);
     const toastContainer = document.getElementById('toast-container');
     if (!toastContainer) {
         console.error('Toast container not found!');
@@ -444,6 +445,7 @@ function showToast(message, type = 'info') {
         return;
     }
 
+    console.log('🍞 Toast container found, creating toast element');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     
@@ -451,10 +453,12 @@ function showToast(message, type = 'info') {
     toast.innerHTML = `<i class="${iconClass}"></i> <p>${message}</p>`;
     
     toastContainer.appendChild(toast);
+    console.log('🍞 Toast added to container');
 
     // Animate in
     setTimeout(() => {
         toast.classList.add('show');
+        console.log('🍞 Toast show class added');
     }, 100);
 
     // Animate out and remove after 5 seconds
@@ -463,6 +467,7 @@ function showToast(message, type = 'info') {
         toast.addEventListener('transitionend', () => {
             if (toast.parentNode) {
                 toast.parentNode.removeChild(toast);
+                console.log('🍞 Toast removed from DOM');
             }
         });
     }, 5000);
@@ -662,10 +667,12 @@ async function refreshGroupStatus(orderGroupId) {
         setStatusIndicators(highestStatus);
 
         if (highestStatus !== lastKnownGroupStatus) {
+            safeLog(`🎯 Status changed from "${lastKnownGroupStatus}" to "${highestStatus}"`);
             lastKnownGroupStatus = highestStatus;
             
             // Show toast notification when status changes to 'alindi'
             if (highestStatus === 'alindi') {
+                safeLog('🎉 Triggering success toast for "alindi" status');
                 showToast('Siparişiniz hazırlandı! Afiyet olsun!', 'success');
             }
             
