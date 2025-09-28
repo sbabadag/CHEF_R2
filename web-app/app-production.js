@@ -437,9 +437,35 @@ function hideLoading() {
 }
 
 function showToast(message, type = 'info') {
-    safeLog(`TOAST: ${message}`);
-    // Basic toast implementation
-    alert(message);
+    const toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        console.error('Toast container not found!');
+        alert(`[${type.toUpperCase()}] ${message}`); // Fallback
+        return;
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const iconClass = type === 'success' ? 'fas fa-check-circle' : type === 'error' ? 'fas fa-times-circle' : 'fas fa-info-circle';
+    toast.innerHTML = `<i class="${iconClass}"></i> <p>${message}</p>`;
+    
+    toastContainer.appendChild(toast);
+
+    // Animate in
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 100);
+
+    // Animate out and remove after 5 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+        toast.addEventListener('transitionend', () => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        });
+    }, 5000);
 }
 
 function initializeDrinkOptions() {
@@ -637,6 +663,12 @@ async function refreshGroupStatus(orderGroupId) {
 
         if (highestStatus !== lastKnownGroupStatus) {
             lastKnownGroupStatus = highestStatus;
+            
+            // Show toast notification when status changes to 'alindi'
+            if (highestStatus === 'alindi') {
+                showToast('Siparişiniz hazırlandı! Afiyet olsun!', 'success');
+            }
+            
             const statusMessages = {
                 new: 'Siparişiniz mutfak kuyruğuna alındı. Lütfen bekleyiniz.',
                 alindi: 'Mutfak siparişinizi hazırlamaya başladı.',
