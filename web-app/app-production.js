@@ -720,8 +720,12 @@ function startOrderStatusListener(orderGroupId) {
             table: 'drink_orders',
             filter: `order_group_id=eq.${orderGroupId}`
         }, (payload) => {
+            console.log('🎯 REALTIME EVENT RECEIVED:', payload);
             const newStatus = payload?.new?.status || payload?.old?.status || 'unknown';
             safeLog(`📨 Realtime status update (${orderGroupId}): ${newStatus}`);
+            console.log('🎯 Event type:', payload.eventType);
+            console.log('🎯 Old data:', payload.old);
+            console.log('🎯 New data:', payload.new);
             refreshGroupStatus(orderGroupId);
         });
 
@@ -729,9 +733,22 @@ function startOrderStatusListener(orderGroupId) {
         orderStatusChannel.subscribe((status) => {
             safeLog(`🔔 Subscription state for ${orderGroupId}: ${status}`);
             if (status === 'SUBSCRIBED') {
+                safeLog('✅ Real-time listener is active');
                 refreshGroupStatus(orderGroupId);
+            } else if (status === 'CHANNEL_ERROR') {
+                safeLog('❌ Real-time subscription failed, falling back to polling');
+                clearInterval(statusCheckInterval);
+                statusCheckInterval = setInterval(() => refreshGroupStatus(orderGroupId), 2000);
             }
         });
+        
+        // Also start polling as backup regardless
+        clearInterval(statusCheckInterval);
+        statusCheckInterval = setInterval(() => {
+            safeLog(`🔄 Polling backup check for ${orderGroupId}`);
+            refreshGroupStatus(orderGroupId);
+        }, 3000);
+        
     } else {
         safeLog('⚠️ Supabase channel subscribe API unavailable; falling back to polling');
         refreshGroupStatus(orderGroupId);

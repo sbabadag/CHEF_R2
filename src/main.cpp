@@ -779,9 +779,16 @@ void updateGroupOrderStatus(int groupIndex, const String& newStatus) {
   GroupOrder* group = &groupedOrders[groupIndex];
   String currentStatus = group->status;
 
+  Serial.println("=== UPDATING GROUP STATUS ===");
+  Serial.println("Group ID: " + group->group_id);
+  Serial.println("Current Status: " + currentStatus);
+  Serial.println("New Status: " + newStatus);
+
   HTTPClient http;
   String url = String(supabase_url) + "/rest/v1/drink_orders?order_group_id=eq." + group->group_id;
   url += "&status=eq." + currentStatus;
+
+  Serial.println("Update URL: " + url);
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -798,10 +805,14 @@ void updateGroupOrderStatus(int groupIndex, const String& newStatus) {
   String jsonString;
   serializeJson(doc, jsonString);
 
+  Serial.println("Request Body: " + jsonString);
+
   int httpCode = http.sendRequest("PATCH", jsonString);
 
+  Serial.println("HTTP Response Code: " + String(httpCode));
+
   if (httpCode == 200 || httpCode == 204) {
-    Serial.println("Grup durumu guncellendi: " + group->group_id + " -> " + newStatus);
+    Serial.println("✅ Grup durumu guncellendi: " + group->group_id + " -> " + newStatus);
 
     for (int i = 0; i < orderCount; i++) {
       if (orders[i].order_group_id == group->group_id) {
@@ -832,7 +843,9 @@ void updateGroupOrderStatus(int groupIndex, const String& newStatus) {
     fetchOrders();
     lastFetch = millis();
   } else {
-    Serial.println("Grup durum guncelleme hatasi: " + String(httpCode));
+    Serial.println("❌ Grup durum guncelleme hatasi: " + String(httpCode));
+    String response = http.getString();
+    Serial.println("Response: " + response);
 
     tft.fillRect(0, 200, 320, 40, TFT_RED);
     tft.setTextColor(TFT_WHITE);
