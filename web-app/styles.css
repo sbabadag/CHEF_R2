@@ -744,21 +744,29 @@ body {
     display: none !important;
 }
 
-/* Toast Notifications - Enhanced */
-.toast {
+/* Toast Container */
+#toast-container {
     position: fixed;
     top: 20px;
     right: 20px;
+    z-index: 10000;
+    pointer-events: none;
+}
+
+/* Toast Notifications - Enhanced */
+.toast {
+    position: relative;
     background: #333;
     color: white;
     padding: 1rem 1.5rem;
     border-radius: 12px;
-    z-index: 10000;
     transform: translateX(400px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     max-width: 400px;
     word-wrap: break-word;
+    margin-bottom: 10px;
+    pointer-events: auto;
 }
 
 .toast.show {
