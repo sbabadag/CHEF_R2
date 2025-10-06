@@ -88,6 +88,35 @@ public:
   }
 
   void touch_calibrate() {
+    // Check if calibration data exists in preferences
+    Preferences prefs;
+    prefs.begin("touch-cal", true); // Read-only
+    bool hasCalibration = prefs.getBool("calibrated", false);
+    
+    if (hasCalibration) {
+      // Load saved calibration
+      uint16_t x_min = prefs.getUShort("x_min", 300);
+      uint16_t x_max = prefs.getUShort("x_max", 3800);
+      uint16_t y_min = prefs.getUShort("y_min", 300);
+      uint16_t y_max = prefs.getUShort("y_max", 3800);
+      prefs.end();
+      
+      Serial.println("✅ Using saved touch calibration");
+      Serial.printf("x_min=%d, x_max=%d, y_min=%d, y_max=%d\n", x_min, x_max, y_min, y_max);
+      
+      // Apply saved calibration
+      auto cfg = _touch_instance.config();
+      cfg.x_min = x_min;
+      cfg.x_max = x_max;
+      cfg.y_min = y_min;
+      cfg.y_max = y_max;
+      _touch_instance.config(cfg);
+      return;
+    }
+    prefs.end();
+    
+    // No saved calibration - perform calibration
+    Serial.println("🔧 Performing touch calibration...");
     this->fillScreen(TFT_BLACK);
     this->setCursor(20, 0);
     this->setTextFont(2);
@@ -99,7 +128,7 @@ public:
     delay(1000);
     uint16_t calData[5];
     this->calibrateTouch(calData, TFT_MAGENTA, TFT_BLACK, 15);
-    Serial.println("Calibration complete!");
+    Serial.println("✅ Calibration complete!");
     Serial.printf("x_min=%d, x_max=%d, y_min=%d, y_max=%d\n", calData[0], calData[1], calData[2], calData[3]);
     
     // Apply the new calibration
@@ -109,6 +138,16 @@ public:
     cfg.y_min = calData[2];
     cfg.y_max = calData[3];
     _touch_instance.config(cfg);
+    
+    // Save calibration to preferences
+    prefs.begin("touch-cal", false); // Read-write
+    prefs.putBool("calibrated", true);
+    prefs.putUShort("x_min", calData[0]);
+    prefs.putUShort("x_max", calData[1]);
+    prefs.putUShort("y_min", calData[2]);
+    prefs.putUShort("y_max", calData[3]);
+    prefs.end();
+    Serial.println("📝 Calibration data saved to Preferences");
   }
 };
 
@@ -131,6 +170,11 @@ Preferences preferences;
 bool apMode = false;
 bool configMode = false;
 
+// Global timing variables (moved here for scope)
+unsigned long lastFetch = 0;
+unsigned long lastWifiCheck = 0;
+unsigned long lastBuzzerTime = 0;
+
 // WiFi credentials storage
 struct StoredNetwork {
   char ssid[32];
@@ -145,7 +189,7 @@ int storedNetworkCount = 0;
 // WiFi connection status variables
 bool wifiConnected = false;
 int currentNetworkIndex = 0;
-unsigned long lastWifiCheck = 0;
+// lastWifiCheck moved to global scope above (line 175)
 const unsigned long WIFI_CHECK_INTERVAL = 30000; // Check every 30 seconds
 const unsigned long WIFI_CONNECT_TIMEOUT = 10000; // 10 seconds timeout per network
 
@@ -161,6 +205,8 @@ void checkWiFiConnection();
 void handleRoot();
 void handleScan();
 void handleConnect();
+void drawScreen();
+void fetchOrders();
 
 // WiFi Credentials Storage Functions
 void loadStoredNetworks() {
@@ -323,9 +369,9 @@ void handleRoot() {
   html += ".then(response=>response.json()).then(data=>{";
   html += "if(data.success){";
   html += "showStatus('✅ '+data.message,'success');";
-  html += "setTimeout(()=>{showStatus('🔄 Cihaz yeniden baslatiyor...','success');},1000);";
-  html += "setTimeout(()=>{window.location.reload();},5000);}";
-  html += "else{showStatus('❌ '+data.message,'error');btn.disabled=false;btn.textContent='Connect to WiFi';}";
+  html += "btn.textContent='Baglandi! Lutfen bekleyin...';";
+  html += "setTimeout(()=>{showStatus('✅ Cihaz normal moda geciyor. Ekrani kontrol edin.','success');},2000);";
+  html += "}else{showStatus('❌ '+data.message,'error');btn.disabled=false;btn.textContent='Connect to WiFi';}";
   html += "}).catch(error=>{console.error('Error:',error);showStatus('❌ Baglanti hatasi olustu','error');btn.disabled=false;btn.textContent='Connect to WiFi';});}";
   html += "function showStatus(message,type){";
   html += "const statusDiv=document.getElementById('status');";
@@ -368,17 +414,56 @@ void handleConnect() {
   
   if (connectToWiFiNetwork(ssid.c_str(), password.c_str(), 15000)) {
     // SUCCESS - Network credentials are already saved by connectToWiFiNetwork()
+    
+    Serial.println("✅ Successfully connected to new network");
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Baglanti basarili! Kimlik bilgileri kaydedildi.\"}");
+    
+    // Wait for response to be sent
+    delay(1500);
+    
+    Serial.println("🔄 Stopping AP mode services...");
+    
+    // Critical: Set flags BEFORE stopping services
     wifiConnected = true;
     apMode = false;
     configMode = false;
     
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"Baglanti basarili! Kimlik bilgileri kaydedildi. Cihaz yeniden baslatiyor...\"}");
+    // Stop AP mode services
+    server.stop();
+    server.close();
+    dnsServer.stop();
     
-    Serial.println("✅ Successfully connected to new network");
-    Serial.println("🔄 Restarting in 3 seconds...");
+    // Disconnect AP completely
+    WiFi.softAPdisconnect(true);
+    delay(500);
     
-    delay(3000);
-    ESP.restart(); // Restart to apply changes cleanly
+    // Force Station mode only
+    WiFi.mode(WIFI_STA);
+    
+    Serial.println("✅ AP mode stopped");
+    Serial.println("✅ Now in Station mode");
+    Serial.print("WiFi Status: ");
+    Serial.println(WiFi.status());
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+    
+    // Initialize display for normal operation
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_GREEN);
+    tft.setTextSize(2);
+    tft.setCursor(10, 100);
+    tft.print("WiFi Baglandi!");
+    delay(2000);
+    
+    // Draw initial screen and fetch orders
+    drawScreen();
+    fetchOrders();
+    lastFetch = millis();
+    
+    Serial.println("✅ Normal operation mode active");
+    
+    // The loop will now handle normal operation
+    
   } else {
     // FAILED - Don't save incorrect credentials
     Serial.println("❌ Failed to connect to network");
@@ -562,16 +647,24 @@ bool autoConnectWiFi() {
 }
 
 void startAPMode() {
-  Serial.println("Starting WiFi Access Point mode...");
+  Serial.println("🔧 Starting WiFi Access Point mode...");
   
   // Stop any existing WiFi connection
-  WiFi.disconnect();
-  delay(1000);
+  WiFi.disconnect(true);
+  delay(500);
+  
+  // Set flags BEFORE starting AP
+  apMode = true;
+  configMode = true;
+  wifiConnected = false;
   
   // Configure and start AP
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET);
   WiFi.softAP(AP_SSID, AP_PASSWORD);
+  
+  // Wait for AP to start
+  delay(1000);
   
   // Start DNS server for captive portal
   dnsServer.start(53, "*", AP_IP);
@@ -583,14 +676,13 @@ void startAPMode() {
   
   server.begin();
   
-  apMode = true;
-  configMode = true;
+  Serial.println("✅ AP Mode Started");
+  Serial.printf("SSID: %s\n", AP_SSID);
+  Serial.printf("Password: %s\n", AP_PASSWORD);
+  Serial.printf("IP Address: %s\n", WiFi.softAPIP().toString().c_str());
   
   // Display AP mode info on screen
   displayAPModeInfo();
-  
-  Serial.printf("AP Mode started. SSID: %s, Password: %s\n", AP_SSID, AP_PASSWORD);
-  Serial.printf("IP Address: %s\n", WiFi.softAPIP().toString().c_str());
 }
 
 void displayAPModeInfo() {
@@ -629,10 +721,10 @@ void checkWiFiConnection() {
   if (apMode) {
     dnsServer.processNextRequest();
     server.handleClient();
-    return;
+    return; // Don't do anything else in AP mode
   }
   
-  // Check WiFi status periodically
+  // Only check WiFi status if we're in normal mode (not AP mode)
   if (currentTime - lastWifiCheck > WIFI_CHECK_INTERVAL) {
     lastWifiCheck = currentTime;
     
@@ -681,7 +773,7 @@ struct Order {
 const int MAX_ORDERS = 8;
 Order orders[MAX_ORDERS];
 int orderCount = 0;
-unsigned long lastFetch = 0;
+// lastFetch moved to global scope above
 const unsigned long FETCH_INTERVAL = 15000; // Increased to 15 seconds
 int consecutiveErrors = 0;
 const int MAX_CONSECUTIVE_ERRORS = 5;
@@ -689,7 +781,7 @@ const int MAX_CONSECUTIVE_ERRORS = 5;
 // Buzzer control variables
 bool hasNewOrder = false;
 bool buzzerActive = false;
-unsigned long lastBuzzerTime = 0;
+// lastBuzzerTime moved to global scope above
 const unsigned long BUZZER_INTERVAL = 60000; // 1 minute = 60000ms
 String lastOrderId = "";
 
@@ -761,18 +853,24 @@ void setup() {
   
   // Connect to WiFi using auto-connection system
   if (!autoConnectWiFi()) {
-    Serial.println("No WiFi networks available, started AP mode");
-    // In AP mode, continue with limited functionality
-    // Don't exit - let the user configure WiFi
+    Serial.println("⚠️  No WiFi networks available, started AP mode");
+    Serial.println("📱 Please connect to AP to configure WiFi");
+    // In AP mode, loop will handle web server
+    // Don't do anything else here
   } else {
     // WiFi connected successfully, continue with normal setup
-    Serial.println("\nWiFi Connected!");
+    Serial.println("\n✅ WiFi Connected!");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
     Serial.print("Gateway: ");
     Serial.println(WiFi.gatewayIP());
     Serial.print("DNS: ");
     Serial.println(WiFi.dnsIP());
+    
+    // Make sure we're in Station mode and AP is off
+    WiFi.mode(WIFI_STA);
+    apMode = false;
+    wifiConnected = true;
     
     // Test basic internet connectivity first
     tft.fillScreen(TFT_BLACK);
