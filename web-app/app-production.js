@@ -45,6 +45,30 @@ function initializeSupabase() {
     return null;
 }
 
+// Wait for Supabase to load with retry logic
+function waitForSupabase(callback, maxAttempts = 10, attemptDelay = 500) {
+    let attempts = 0;
+    
+    const checkSupabase = () => {
+        attempts++;
+        safeLog(`Checking for Supabase... Attempt ${attempts}/${maxAttempts}`);
+        
+        if (typeof window.supabase !== 'undefined') {
+            safeLog('✅ Supabase SDK found!');
+            supabase = initializeSupabase();
+            callback();
+        } else if (attempts < maxAttempts) {
+            safeLog(`⏳ Waiting for Supabase... (${attempts}/${maxAttempts})`);
+            setTimeout(checkSupabase, attemptDelay);
+        } else {
+            safeLog('❌ Supabase SDK failed to load after ' + maxAttempts + ' attempts', 'error');
+            showToast('Veritabanı bağlantısı kurulamadı. Sayfayı yenileyin.', 'error');
+        }
+    };
+    
+    checkSupabase();
+}
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     safeLog('🔥 PRODUCTION APP LOADING - NO TEST MODE');
@@ -75,12 +99,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Wait for Supabase then initialize
-        setTimeout(() => {
+        // Wait for Supabase with retry logic
+        waitForSupabase(() => {
             try {
-                if (typeof window.supabase !== 'undefined') {
-                    supabase = initializeSupabase();
-                }
                 setupEventListeners();
                 initializeDrinkOptions();
                 setupQuantityControls();
@@ -88,7 +109,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) {
                 safeLog('❌ Setup error: ' + error.message, 'error');
             }
-        }, 2000);
+        });
         
     } catch (error) {
         safeLog('❌ DOM initialization error: ' + error.message, 'error');
@@ -110,22 +131,28 @@ async function confirmOrder() {
     
     // Force Supabase if not ready
     if (!supabase && typeof window.supabase !== 'undefined') {
+        safeLog('Initializing Supabase in confirmOrder...');
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     }
     
     if (!supabase) {
         hideLoading();
-        showToast('❌ PRODUCTION ERROR: No database connection', 'error');
+        safeLog('❌ No Supabase connection available', 'error');
+        showToast('❌ Veritabanı bağlantısı yok. Sayfayı yenileyin.', 'error');
         return;
     }
     
     try {
+        safeLog('Creating orders for: ' + JSON.stringify(selectedDrinks));
+        
         currentOrderIds = [];
         const orderGroupId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
             ? crypto.randomUUID()
             : `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
         currentOrderGroupId = orderGroupId;
         lastKnownGroupStatus = 'new';
+        
+        safeLog('Order Group ID: ' + orderGroupId);
         
         // Create one order row per selected drink type, with quantity
         const ordersToInsert = selectedDrinks.map(drink => ({
@@ -138,12 +165,17 @@ async function confirmOrder() {
             order_group_id: orderGroupId
         }));
 
+        safeLog('Orders to insert: ' + JSON.stringify(ordersToInsert));
+
         const { data, error } = await supabase
             .from('drink_orders')
             .insert(ordersToInsert)
             .select();
 
-        if (error) throw error;
+        if (error) {
+            safeLog('❌ Supabase error: ' + JSON.stringify(error), 'error');
+            throw new Error(`Database error: ${error.message || error.hint || 'Unknown error'}`);
+        }
 
         if (data) {
             currentOrderIds = data.map(d => d.id);
@@ -167,8 +199,21 @@ async function confirmOrder() {
         
     } catch (error) {
         hideLoading();
-        safeLog('❌ PRODUCTION ERROR: ' + error.message);
-        showToast('PRODUCTION ERROR: ' + error.message, 'error');
+        safeLog('❌ PRODUCTION ERROR: ' + error.message, 'error');
+        safeLog('Error stack: ' + (error.stack || 'No stack trace'), 'error');
+        
+        // Show user-friendly error message
+        let errorMessage = 'Sipariş oluşturulamadı. ';
+        
+        if (error.message.includes('fetch')) {
+            errorMessage += 'Internet bağlantınızı kontrol edin.';
+        } else if (error.message.includes('Database')) {
+            errorMessage += 'Veritabanı hatası: ' + error.message;
+        } else {
+            errorMessage += error.message;
+        }
+        
+        showToast(errorMessage, 'error');
     }
 }
 
