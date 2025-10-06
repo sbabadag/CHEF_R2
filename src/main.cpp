@@ -459,6 +459,7 @@ void handleConnect() {
     drawScreen();
     fetchOrders();
     lastFetch = millis();
+    lastWifiCheck = millis(); // Don't check WiFi immediately after connecting
     
     Serial.println("✅ Normal operation mode active");
     
@@ -623,6 +624,7 @@ bool autoConnectWiFi() {
           currentNetworkIndex = i;
           wifiConnected = true;
           apMode = false;
+          lastWifiCheck = millis(); // Don't check WiFi immediately after auto-connect
           
           // DNS is already configured in connectToWiFiNetwork function
           // Just verify and wait a bit
@@ -729,24 +731,54 @@ void checkWiFiConnection() {
     lastWifiCheck = currentTime;
     
     if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("WiFi connection lost, attempting to reconnect...");
+      Serial.println("⚠️  WiFi connection lost, attempting to reconnect...");
+      Serial.print("WiFi Status Code: ");
+      Serial.println(WiFi.status());
       wifiConnected = false;
       
-      // Try to reconnect to current network first
+      // Try to reconnect to current network first (3 attempts)
       if (currentNetworkIndex < storedNetworkCount) {
         const char* currentSSID = storedNetworks[currentNetworkIndex].ssid;
         const char* currentPassword = storedNetworks[currentNetworkIndex].password;
         
-        if (connectToWiFiNetwork(currentSSID, currentPassword, 5000)) {
-          wifiConnected = true;
-          return;
+        Serial.printf("Attempting to reconnect to: %s\n", currentSSID);
+        
+        for (int attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) {
+            Serial.printf("Reconnect attempt %d/3\n", attempt + 1);
+            delay(2000);
+          }
+          
+          if (connectToWiFiNetwork(currentSSID, currentPassword, 10000)) {
+            wifiConnected = true;
+            Serial.println("✅ Reconnected successfully!");
+            return;
+          }
         }
       }
       
-      // If current network fails, try auto-connect again
-      autoConnectWiFi();
+      // If reconnection fails after 3 attempts, DON'T start AP mode immediately
+      // Just log the error and keep trying on next check
+      Serial.println("❌ Failed to reconnect, will retry in 30 seconds");
+      Serial.println("⚠️  NOT starting AP mode - will keep trying to reconnect");
+      
+      // Only start AP mode if we've been disconnected for a very long time (5 minutes)
+      static unsigned long firstDisconnectTime = 0;
+      if (firstDisconnectTime == 0) {
+        firstDisconnectTime = millis();
+      }
+      
+      if (millis() - firstDisconnectTime > 300000) { // 5 minutes
+        Serial.println("❌ Disconnected for 5+ minutes, starting AP mode");
+        autoConnectWiFi();
+        firstDisconnectTime = 0; // Reset
+      }
+      
     } else {
       wifiConnected = true;
+      // Reset disconnect timer when connected
+      static unsigned long firstDisconnectTime = 0;
+      firstDisconnectTime = 0;
     }
   }
 }
@@ -907,8 +939,15 @@ void setup() {
     // Initial screen
     drawScreen();
     
+    // Give WiFi connection some time to fully stabilize before fetching
+    delay(1000);
+    
     // Fetch initial orders
+    Serial.println("📋 Fetching initial orders...");
     fetchOrders();
+    lastFetch = millis();
+    
+    Serial.println("✅ Setup complete - entering main loop");
   }
 }
 void fetchOrders() {
@@ -988,7 +1027,10 @@ void fetchOrders() {
     Serial.println("HTTP.begin() BASARISIZ!");
     Serial.println("Muhtemel sebep: DNS cozumleme veya SSL handshake hatasi");
     consecutiveErrors++;
-    delete client;
+    if (client) {
+      delete client;
+      client = nullptr;
+    }
     return;
   }
   
@@ -1072,41 +1114,14 @@ void fetchOrders() {
     Serial.println("Hata sayisi: " + String(consecutiveErrors));
     Serial.println("=========================");
     
-    // Test basic connectivity
-    Serial.println("Testing ping to 8.8.8.8...");
-    
     // Display detailed error on screen
-    delete client; // Clean up client on error
-    if (consecutiveErrors <= 3) {
-      tft.fillScreen(TFT_BLACK);
-      tft.setTextColor(TFT_RED);
-      tft.setTextSize(2);
-      tft.setCursor(10, 30);
-      tft.print("BAGLANTI HATASI");
-      
-      tft.setTextColor(TFT_WHITE);
-      tft.setTextSize(1);
-      tft.setCursor(10, 60);
-      tft.print("WiFi: " + String(WiFi.SSID()));
-      
-      tft.setCursor(10, 75);
-      tft.print("Signal: " + String(WiFi.RSSI()) + " dBm");
-      
-      tft.setCursor(10, 90);
-      tft.print("IP: " + WiFi.localIP().toString());
-      
-      tft.setCursor(10, 105);
-      tft.print("DNS: " + WiFi.dnsIP().toString());
-      
-      tft.setTextColor(TFT_YELLOW);
-      tft.setCursor(10, 130);
-      tft.print("Hata: " + String(consecutiveErrors));
-      
-      tft.setCursor(10, 145);
-      tft.print("Yeniden deneniyor...");
-      
-      delay(2000);
+    if (client) {
+      delete client; // Clean up client on error
+      client = nullptr;
     }
+    
+    // Don't show error screen, just return and retry
+    return; // Early return on DNS/connection errors
     
   } else {
     consecutiveErrors++;
@@ -1114,26 +1129,20 @@ void fetchOrders() {
     Serial.println("HTTP Hatasi: " + String(httpCode) + ", Hata sayisi: " + String(consecutiveErrors));
     Serial.println("Hata mesaji: " + errorResponse);
     
-    delete client; // Clean up client on error
-    
-    // Display HTTP error only if first few errors
-    if (consecutiveErrors <= 3) {
-      tft.fillScreen(TFT_BLACK);
-      tft.setTextColor(TFT_RED);
-      tft.setTextSize(2);
-      tft.setCursor(10, 50);
-      tft.print("HTTP HATASI");
-      tft.setTextColor(TFT_WHITE);
-      tft.setTextSize(1);
-      tft.setCursor(10, 80);
-      tft.print("Hata kodu: " + String(httpCode));
-      tft.setCursor(10, 100);
-      tft.print("Hata sayisi: " + String(consecutiveErrors));
+    if (client) {
+      delete client; // Clean up client on error
+      client = nullptr;
     }
+    
+    // Don't show error screen, just log and continue
+    // Display will be updated on next successful fetch
   }
   
   http.end();
-  delete client; // Always clean up client at the end
+  if (client) {
+    delete client; // Always clean up client at the end
+    client = nullptr;
+  }
 }
 
 int statusRank(const String& status) {
@@ -1530,7 +1539,10 @@ void updateGroupOrderStatus(int groupIndex, const String& newStatus) {
 
   if (!http.begin(*client, url)) {
     Serial.println("HTTP.begin() BASARISIZ!");
-    delete client;
+    if (client) {
+      delete client;
+      client = nullptr;
+    }
     return;
   }
   
@@ -1588,19 +1600,16 @@ void updateGroupOrderStatus(int groupIndex, const String& newStatus) {
     String response = http.getString();
     Serial.println("Response: " + response);
 
-    tft.fillRect(0, 200, 320, 40, TFT_RED);
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextSize(1);
-    tft.setCursor(10, 210);
-    tft.print("Grup guncelleme hatasi: " + String(httpCode));
-    tft.setCursor(10, 220);
-    tft.print("Tekrar deneniyor...");
-    delay(2000);
+    // Don't show error screen with String concatenation
+    // Just redraw the current screen
     drawScreen();
   }
 
   http.end();
-  delete client; // Always clean up
+  if (client) {
+    delete client; // Always clean up
+    client = nullptr;
+  }
 }
 
 void handleTouch(uint16_t x, uint16_t y) {
