@@ -223,31 +223,32 @@ void saveStoredNetworks() {
 
 bool addNetwork(const char* ssid, const char* password) {
   if (storedNetworkCount >= MAX_WIFI_NETWORKS) {
-    Serial.println("Maximum networks reached");
+    Serial.println("⚠️  Maximum networks reached");
     return false;
   }
   
   // Check if network already exists
   for (int i = 0; i < storedNetworkCount; i++) {
     if (strcmp(storedNetworks[i].ssid, ssid) == 0) {
-      // Update existing network
+      // Update existing network (in case password changed)
       strncpy(storedNetworks[i].password, password, sizeof(storedNetworks[i].password));
       storedNetworks[i].enabled = true;
+      storedNetworks[i].priority = 0; // Make it highest priority
       saveStoredNetworks();
-      Serial.printf("Updated existing network: %s\n", ssid);
+      Serial.printf("🔄 Updated existing network: %s (now priority 0)\n", ssid);
       return true;
     }
   }
   
-  // Add new network
+  // Add new network at highest priority
   strncpy(storedNetworks[storedNetworkCount].ssid, ssid, sizeof(storedNetworks[storedNetworkCount].ssid));
   strncpy(storedNetworks[storedNetworkCount].password, password, sizeof(storedNetworks[storedNetworkCount].password));
   storedNetworks[storedNetworkCount].enabled = true;
-  storedNetworks[storedNetworkCount].priority = storedNetworkCount;
+  storedNetworks[storedNetworkCount].priority = 0; // Highest priority for new network
   storedNetworkCount++;
   
   saveStoredNetworks();
-  Serial.printf("Added new network: %s\n", ssid);
+  Serial.printf("➕ Added new network: %s (priority 0, total: %d)\n", ssid, storedNetworkCount);
   return true;
 }
 
@@ -279,8 +280,13 @@ void handleRoot() {
   html += "<input type='text' id='ssid' placeholder='Enter WiFi network name'></div>";
   html += "<div class='form-group'><label for='password'>Password:</label>";
   html += "<input type='password' id='password' placeholder='Enter WiFi password'></div>";
-  html += "<button onclick='connectWiFi()'>Connect to WiFi</button>";
-  html += "<div id='status' class='status'></div></div>";
+  html += "<button id='connectBtn' onclick='connectWiFi()'>Connect to WiFi</button>";
+  html += "<div id='status' class='status'></div>";
+  html += "<div style='margin-top:20px;padding:10px;background:#f0f0f0;border-radius:5px;font-size:12px;'>";
+  html += "<strong>ℹ️ Bilgi:</strong><br>";
+  html += "Basarili baglantidan sonra ag bilgileri otomatik olarak kaydedilir.<br>";
+  html += "Bir dahaki acilista cihaz bu aga otomatik baglanacaktir.";
+  html += "</div></div>";
   
   // JavaScript
   html += "<script>";
@@ -308,15 +314,19 @@ void handleRoot() {
   html += "function connectWiFi(){";
   html += "const ssid=document.getElementById('ssid').value;";
   html += "const password=document.getElementById('password').value;";
-  html += "if(!ssid){showStatus('Please enter a network name','error');return;}";
-  html += "showStatus('Connecting to '+ssid+'...','success');";
+  html += "const btn=document.getElementById('connectBtn');";
+  html += "if(!ssid){showStatus('Lutfen ag adi girin','error');return;}";
+  html += "btn.disabled=true;btn.textContent='Baglaniliyor...';";
+  html += "showStatus('🔄 '+ssid+' agina baglaniyor...','success');";
   html += "fetch('/connect',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},";
   html += "body:'ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(password)})";
   html += ".then(response=>response.json()).then(data=>{";
-  html += "if(data.success){showStatus('Successfully connected! Device will restart in 5 seconds.','success');";
+  html += "if(data.success){";
+  html += "showStatus('✅ '+data.message,'success');";
+  html += "setTimeout(()=>{showStatus('🔄 Cihaz yeniden baslatiyor...','success');},1000);";
   html += "setTimeout(()=>{window.location.reload();},5000);}";
-  html += "else{showStatus('Failed to connect: '+data.message,'error');}";
-  html += "}).catch(error=>{console.error('Error:',error);showStatus('Connection error occurred','error');});}";
+  html += "else{showStatus('❌ '+data.message,'error');btn.disabled=false;btn.textContent='Connect to WiFi';}";
+  html += "}).catch(error=>{console.error('Error:',error);showStatus('❌ Baglanti hatasi olustu','error');btn.disabled=false;btn.textContent='Connect to WiFi';});}";
   html += "function showStatus(message,type){";
   html += "const statusDiv=document.getElementById('status');";
   html += "statusDiv.textContent=message;statusDiv.className='status '+type;statusDiv.style.display='block';}";
@@ -353,27 +363,36 @@ void handleConnect() {
     return;
   }
   
-  // Add network to stored networks
-  addNetwork(ssid.c_str(), password.c_str());
+  // Try connecting to the new network first
+  Serial.printf("🔄 Attempting to connect to: %s\n", ssid.c_str());
   
-  server.send(200, "application/json", "{\"success\":true,\"message\":\"Network saved, attempting connection...\"}");
-  
-  // Set flag to restart and try connection
-  configMode = false;
-  
-  // Try connecting to the new network
   if (connectToWiFiNetwork(ssid.c_str(), password.c_str(), 15000)) {
+    // SUCCESS - Network credentials are already saved by connectToWiFiNetwork()
     wifiConnected = true;
     apMode = false;
-    Serial.println("Successfully connected to new network");
+    configMode = false;
+    
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Baglanti basarili! Kimlik bilgileri kaydedildi. Cihaz yeniden baslatiyor...\"}");
+    
+    Serial.println("✅ Successfully connected to new network");
+    Serial.println("🔄 Restarting in 3 seconds...");
+    
+    delay(3000);
+    ESP.restart(); // Restart to apply changes cleanly
   } else {
-    Serial.println("Failed to connect to new network, staying in AP mode");
+    // FAILED - Don't save incorrect credentials
+    Serial.println("❌ Failed to connect to network");
+    server.send(400, "application/json", "{\"success\":false,\"message\":\"Baglanti basarisiz! Sifre veya ag ayarlarini kontrol edin.\"}");
   }
 }
 
 // Function to try connecting to a specific WiFi network
 bool connectToWiFiNetwork(const char* networkSSID, const char* networkPassword, int timeoutMs = 10000) {
   Serial.printf("Trying to connect to: %s\n", networkSSID);
+  
+  // Disconnect first to ensure clean connection
+  WiFi.disconnect(true);
+  delay(100);
   
   // Display connection attempt on screen
   tft.fillScreen(TFT_BLACK);
@@ -382,35 +401,98 @@ bool connectToWiFiNetwork(const char* networkSSID, const char* networkPassword, 
   tft.setCursor(10, 50);
   tft.printf("Connecting to:\n%s", networkSSID);
   
+  // Set WiFi mode to station
+  WiFi.mode(WIFI_STA);
+  delay(100);
+  
+  // DON'T manually configure DNS - let DHCP handle it automatically
+  // This is more reliable with most routers
+  
+  // Start WiFi connection with default settings
   WiFi.begin(networkSSID, networkPassword);
   
   unsigned long startTime = millis();
+  int dotCount = 0;
   while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < timeoutMs) {
     delay(500);
     Serial.print(".");
     
     // Update display with dots
+    tft.fillRect(10, 80, 300, 20, TFT_BLACK);
     tft.setCursor(10, 80);
-    for (int i = 0; i < ((millis() - startTime) / 500) % 4; i++) {
+    for (int i = 0; i < dotCount % 4; i++) {
       tft.print(".");
     }
+    dotCount++;
   }
   
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("\nConnected to %s\n", networkSSID);
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
+    Serial.print("Subnet Mask: ");
+    Serial.println(WiFi.subnetMask());
+    Serial.print("Gateway: ");
+    Serial.println(WiFi.gatewayIP());
+    Serial.print("Primary DNS: ");
+    Serial.println(WiFi.dnsIP(0));
+    Serial.print("Secondary DNS: ");
+    Serial.println(WiFi.dnsIP(1));
     
-    // Display success
+    // Wait a bit for DNS to be fully ready
+    delay(1000);
+    
+    // SUCCESS! Save network credentials for future use
+    Serial.println("✅ Connection successful, saving network credentials...");
+    addNetwork(networkSSID, networkPassword);
+    Serial.println("📝 Network credentials saved to Preferences");
+    
+    // Display success with network info
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_GREEN);
+    tft.setTextSize(2);
+    tft.setCursor(10, 30);
+    tft.printf("WiFi Baglandi!\n");
+    tft.setTextSize(1);
+    tft.setTextColor(TFT_YELLOW);
     tft.setCursor(10, 50);
-    tft.printf("Connected to:\n%s\nIP: %s", networkSSID, WiFi.localIP().toString().c_str());
-    delay(2000);
+    tft.print("(Kimlik bilgileri kaydedildi)");
+    
+    tft.setTextColor(TFT_WHITE);
+    tft.setCursor(10, 70);
+    tft.printf("SSID: %s\n", networkSSID);
+    tft.setCursor(10, 85);
+    tft.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+    tft.setCursor(10, 100);
+    tft.printf("Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
+    tft.setCursor(10, 115);
+    tft.printf("DNS: %s", WiFi.dnsIP(0).toString().c_str());
+    
+    tft.setTextColor(TFT_GREEN);
+    tft.setCursor(10, 135);
+    tft.print("Bir dahaki sefere otomatik");
+    tft.setCursor(10, 150);
+    tft.print("baglanacak!");
+    
+    delay(3000);
     
     return true;
   } else {
     Serial.printf("\nFailed to connect to %s\n", networkSSID);
+    Serial.printf("WiFi Status: %d\n", WiFi.status());
+    
+    // Display error
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_RED);
+    tft.setCursor(10, 50);
+    tft.printf("Baglanti Basarisiz!\n");
+    tft.setTextColor(TFT_WHITE);
+    tft.setCursor(10, 70);
+    tft.printf("SSID: %s\n", networkSSID);
+    tft.setCursor(10, 85);
+    tft.printf("Status: %d", WiFi.status());
+    delay(2000);
+    
     return false;
   }
 }
@@ -457,9 +539,13 @@ bool autoConnectWiFi() {
           wifiConnected = true;
           apMode = false;
           
-          // Configure DNS servers
-          WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), IPAddress(8, 8, 8, 8), IPAddress(1, 1, 1, 1));
+          // DNS is already configured in connectToWiFiNetwork function
+          // Just verify and wait a bit
           delay(1000);
+          
+          Serial.println("WiFi connected successfully!");
+          Serial.print("Final DNS: ");
+          Serial.println(WiFi.dnsIP());
           
           return true;
         }
@@ -728,9 +814,37 @@ void setup() {
   }
 }
 void fetchOrders() {
-  if (!wifiConnected || WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi baglantisi yok!");
-    return;
+  // Check WiFi connection status
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi baglantisi yok! Status: " + String(WiFi.status()));
+    
+    // Try to reconnect using WiFi.reconnect()
+    Serial.println("WiFi yeniden baglaniyor...");
+    if (WiFi.reconnect()) {
+      Serial.println("WiFi yeniden baglandi!");
+      // Wait for connection to stabilize
+      int waitCount = 0;
+      while (WiFi.status() != WL_CONNECTED && waitCount < 20) {
+        delay(500);
+        waitCount++;
+        Serial.print(".");
+      }
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nReconnect basarili!");
+        Serial.print("IP: ");
+        Serial.println(WiFi.localIP());
+        Serial.print("DNS: ");
+        Serial.println(WiFi.dnsIP(0));
+        delay(1000); // Wait for DNS to be ready
+      } else {
+        Serial.println("\nReconnect basarisiz!");
+        return;
+      }
+    } else {
+      Serial.println("WiFi yeniden baglanamiyor!");
+      return;
+    }
   }
   
   // Skip fetching if too many consecutive errors
@@ -743,21 +857,51 @@ void fetchOrders() {
   }
   
   Serial.println("Siparisler getiriliyor...");
+  Serial.print("WiFi RSSI: ");
+  Serial.println(WiFi.RSSI());
+  Serial.print("WiFi Channel: ");
+  Serial.println(WiFi.channel());
+  
+  // Create WiFiClientSecure first with proper configuration
+  WiFiClientSecure *client = new WiFiClientSecure;
+  if (!client) {
+    Serial.println("WiFiClientSecure allocation failed!");
+    consecutiveErrors++;
+    return;
+  }
+  
+  // CRITICAL: Configure client BEFORE creating HTTPClient
+  client->setInsecure(); // Skip certificate verification (required for Supabase)
+  client->setTimeout(25000); // 25 seconds timeout in milliseconds
+  
+  // Enable keep-alive for better connection stability
+  client->setNoDelay(true);
   
   HTTPClient http;
+  
   // Fetch only "new" orders so acknowledged batches disappear from screen
   String url = String(supabase_url) + "/rest/v1/drink_orders?status=eq.new&order=priority.desc,created_at.asc";
   
   Serial.println("URL: " + url);
+  Serial.println("SSL baglantisi kuruluyor...");
   
-  // Use WiFiClientSecure for HTTPS connections
-  WiFiClientSecure client;
-  client.setInsecure(); // Skip certificate verification for now
-  http.begin(client, url);
+  // Begin HTTP connection with the properly configured secure client
+  if (!http.begin(*client, url)) {
+    Serial.println("HTTP.begin() BASARISIZ!");
+    Serial.println("Muhtemel sebep: DNS cozumleme veya SSL handshake hatasi");
+    consecutiveErrors++;
+    delete client;
+    return;
+  }
+  
+  Serial.println("HTTP connection established!");
+  
+  // Set headers
   http.addHeader("apikey", supabase_key);
   http.addHeader("Authorization", "Bearer " + String(supabase_key));
-  http.setTimeout(15000); // Increased timeout to 15 seconds
+  http.setTimeout(25000); // 25 seconds timeout for entire request
   
+  Serial.println("HTTP GET request gonderiliyor...");
   int httpCode = http.GET();
   
   Serial.print("HTTP Yanit Kodu: ");
@@ -815,23 +959,55 @@ void fetchOrders() {
     }
   } else if (httpCode == -1) {
     consecutiveErrors++;
-    Serial.println("DNS cozumleme hatasi veya baglanti problemi! Hata sayisi: " + String(consecutiveErrors));
+    Serial.println("==== BAGLANTI HATASI ====");
+    Serial.println("HTTP Error Code: -1 (Connection Failed)");
+    Serial.print("WiFi Status: ");
+    Serial.println(WiFi.status());
+    Serial.print("WiFi RSSI: ");
+    Serial.println(WiFi.RSSI());
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Gateway: ");
+    Serial.println(WiFi.gatewayIP());
+    Serial.print("DNS: ");
+    Serial.println(WiFi.dnsIP());
+    Serial.println("Hata sayisi: " + String(consecutiveErrors));
+    Serial.println("=========================");
     
-    // Display error on screen only if first few errors
+    // Test basic connectivity
+    Serial.println("Testing ping to 8.8.8.8...");
+    
+    // Display detailed error on screen
+    delete client; // Clean up client on error
     if (consecutiveErrors <= 3) {
       tft.fillScreen(TFT_BLACK);
       tft.setTextColor(TFT_RED);
       tft.setTextSize(2);
-      tft.setCursor(10, 50);
+      tft.setCursor(10, 30);
       tft.print("BAGLANTI HATASI");
+      
       tft.setTextColor(TFT_WHITE);
       tft.setTextSize(1);
-      tft.setCursor(10, 80);
-      tft.print("DNS cozumleme sorunu");
-      tft.setCursor(10, 100);
-      tft.print("Hata sayisi: " + String(consecutiveErrors));
-      tft.setCursor(10, 120);
-      tft.print("Otomatik yeniden deneniyor...");
+      tft.setCursor(10, 60);
+      tft.print("WiFi: " + String(WiFi.SSID()));
+      
+      tft.setCursor(10, 75);
+      tft.print("Signal: " + String(WiFi.RSSI()) + " dBm");
+      
+      tft.setCursor(10, 90);
+      tft.print("IP: " + WiFi.localIP().toString());
+      
+      tft.setCursor(10, 105);
+      tft.print("DNS: " + WiFi.dnsIP().toString());
+      
+      tft.setTextColor(TFT_YELLOW);
+      tft.setCursor(10, 130);
+      tft.print("Hata: " + String(consecutiveErrors));
+      
+      tft.setCursor(10, 145);
+      tft.print("Yeniden deneniyor...");
+      
+      delay(2000);
     }
     
   } else {
@@ -839,6 +1015,8 @@ void fetchOrders() {
     String errorResponse = http.getString();
     Serial.println("HTTP Hatasi: " + String(httpCode) + ", Hata sayisi: " + String(consecutiveErrors));
     Serial.println("Hata mesaji: " + errorResponse);
+    
+    delete client; // Clean up client on error
     
     // Display HTTP error only if first few errors
     if (consecutiveErrors <= 3) {
@@ -857,6 +1035,7 @@ void fetchOrders() {
   }
   
   http.end();
+  delete client; // Always clean up client at the end
 }
 
 int statusRank(const String& status) {
@@ -1234,20 +1413,34 @@ void updateGroupOrderStatus(int groupIndex, const String& newStatus) {
   Serial.println("Current Status: " + currentStatus);
   Serial.println("New Status: " + newStatus);
 
+  // Create secure client with proper configuration
+  WiFiClientSecure *client = new WiFiClientSecure;
+  if (!client) {
+    Serial.println("WiFiClientSecure allocation failed!");
+    return;
+  }
+  
+  client->setInsecure();
+  client->setTimeout(15000); // 15 seconds timeout
+  client->setNoDelay(true);
+  
   HTTPClient http;
   String url = String(supabase_url) + "/rest/v1/drink_orders?order_group_id=eq." + group->group_id;
   url += "&status=eq." + currentStatus;
 
   Serial.println("Update URL: " + url);
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  http.begin(client, url);
+  if (!http.begin(*client, url)) {
+    Serial.println("HTTP.begin() BASARISIZ!");
+    delete client;
+    return;
+  }
+  
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", supabase_key);
   http.addHeader("Authorization", "Bearer " + String(supabase_key));
   http.addHeader("Prefer", "return=minimal");
-  http.setTimeout(10000);
+  http.setTimeout(15000);
 
   JsonDocument doc;
   doc["status"] = newStatus;
@@ -1309,6 +1502,7 @@ void updateGroupOrderStatus(int groupIndex, const String& newStatus) {
   }
 
   http.end();
+  delete client; // Always clean up
 }
 
 void handleTouch(uint16_t x, uint16_t y) {

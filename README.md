@@ -1,6 +1,37 @@
-# Tea Kitchen Order App for CYD (Cheap Yellow Display)
+# Kitchen Order Display System for CYD (ESP32-2432S028R)
 
-This project creates a tea order management system for kitchen staff using a CYD (ESP32-2432S028R) display and Supabase as the backend database.
+Modern mutfak sipariş yönetim sistemi - ESP32 tabanlı dokunmatik ekran kiosk ve Supabase backend.
+
+## 🎯 Özellikler
+
+- ✅ **Otomatik WiFi Bağlantısı**: Kimlik bilgileri kalıcı olarak saklanır
+- ✅ **Çoklu İçecek Siparişi**: Tek seferde birden fazla içecek sipariş edilebilir
+- ✅ **Dokunmatik Arayüz**: 2.8" TFT LCD ekran ile kullanımı kolay
+- ✅ **Gerçek Zamanlı Senkronizasyon**: Supabase ile anlık veri güncellemesi
+- ✅ **Web Yapılandırma**: Kullanıcı dostu WiFi setup arayüzü
+- ✅ **SSL/TLS Güvenli Bağlantı**: HTTPS üzerinden güvenli veri iletişimi
+- ✅ **Öncelikli Sipariş Sistemi**: Acil siparişler için önceliklendirme
+- ✅ **Departman Bazlı Filtreleme**: Farklı departmanlar için ayrı görünüm
+
+## 📱 WiFi Ayarları
+
+### 🔄 Otomatik Bağlantı Özelliği
+
+ESP32 kiosk cihazınız artık WiFi kimlik bilgilerini **otomatik olarak kaydeder**!
+
+#### İlk Kurulum
+1. Cihazı açın - "WiFi Setup Mode" ekranını göreceksiniz
+2. `CYD_SETUP` ağına bağlanın (Şifre: `12345678`)
+3. Tarayıcınızda `http://192.168.4.1` adresine gidin
+4. WiFi ağınızı seçin ve şifresini girin
+5. **Başarılı bağlantı sonrası kimlik bilgileri otomatik kaydedilir**
+
+#### Sonraki Açılışlar
+- ✅ Cihaz kayıtlı WiFi ağına **otomatik bağlanır**
+- ✅ **Hiçbir kullanıcı müdahalesi gerekmez**
+- ✅ En son bağlanılan ağa en yüksek öncelik verilir
+
+📖 **Detaylı bilgi için**: [WIFI_SETUP_TR.md](WIFI_SETUP_TR.md) dosyasına bakın
 
 ## Hardware Requirements
 

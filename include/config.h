@@ -30,6 +30,13 @@ static const WiFiNetwork wifi_networks[MAX_WIFI_NETWORKS] = {
 #define SUPABASE_URL "https://cfapmolnnvemqjneaher.supabase.co"
 #define SUPABASE_ANON_KEY "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c"
 
+// Network Configuration
+#define PRIMARY_DNS_IP 8, 8, 8, 8          // Google DNS
+#define SECONDARY_DNS_IP 1, 1, 1, 1        // Cloudflare DNS
+#define HTTP_TIMEOUT 20000                 // HTTP request timeout in ms
+#define WIFI_RECONNECT_INTERVAL 5000       // WiFi reconnect check interval
+#define DNS_RESOLVE_TIMEOUT 5000           // DNS resolution timeout
+
 // Display Configuration for CYD (ESP32-2432S028R)
 // Note: TFT_WIDTH and TFT_HEIGHT are defined in platformio.ini
 #define SCREEN_WIDTH 240
