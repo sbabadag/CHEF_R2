@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase CORS Fix Guide</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #667eea;
+        }
+        h2 {
+            color: #764ba2;
+            margin-top: 30px;
+        }
+        .error-box {
+            background: #fee;
+            border-left: 4px solid #f44;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .success-box {
+            background: #efe;
+            border-left: 4px solid #4a4;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .warning-box {
+            background: #ffc;
+            border-left: 4px solid #fa4;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .step {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 3px solid #667eea;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #764ba2;
+        }
+        .solution {
+            background: #e8f5e9;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border: 2px solid #4caf50;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔧 Supabase CORS/Connection Fix Guide</h1>
+        
+        <div class="error-box">
+            <strong>⚠️ Current Error:</strong> TypeError: Failed to fetch
+            <br>This means the browser cannot connect to Supabase.
+        </div>
+
+        <h2>🎯 Solution 1: Check Supabase Project Settings (EASIEST)</h2>
+        <div class="solution">
+            <p><strong>This is most likely the issue!</strong> Your Supabase project might be:</p>
+            <ul>
+                <li>🔴 <strong>Paused</strong> (free tier projects pause after inactivity)</li>
+                <li>🔴 <strong>Wrong URL/Key</strong></li>
+                <li>🔴 <strong>RLS blocking access</strong></li>
+            </ul>
+
+            <div class="step">
+                <strong>Step 1:</strong> Go to your Supabase Dashboard
+                <br><a href="https://supabase.com/dashboard" target="_blank">https://supabase.com/dashboard</a>
+            </div>
+
+            <div class="step">
+                <strong>Step 2:</strong> Find your project: <code>cfapmolnnvemqjneaher</code>
+            </div>
+
+            <div class="step">
+                <strong>Step 3:</strong> Check if it says "PAUSED" or "INACTIVE"
+                <br>If paused → Click <strong>"Restore Project"</strong>
+            </div>
+
+            <div class="step">
+                <strong>Step 4:</strong> Verify the URL and Key:
+                <br>Settings → API → Project URL and anon/public key
+                <br>Current URL: <code>https://cfapmolnnvemqjneaher.supabase.co</code>
+            </div>
+
+            <div class="step">
+                <strong>Step 5:</strong> Disable RLS (for testing):
+                <br>Table Editor → drink_orders → Settings → Disable RLS
+                <br>⚠️ <em>Enable it back after testing for security!</em>
+            </div>
+        </div>
+
+        <h2>🎯 Solution 2: GitHub Pages HTTPS Issue</h2>
+        <div class="solution">
+            <p>GitHub Pages forces HTTPS, which might cause issues with Supabase.</p>
+            
+            <div class="step">
+                <strong>Option A:</strong> Use Localhost (Recommended for testing)
+                <pre>cd web-app
+python -m http.server 8000
+# Then open: http://localhost:8000/index.html</pre>
+            </div>
+
+            <div class="step">
+                <strong>Option B:</strong> Use a different hosting:
+                <ul>
+                    <li><strong>Netlify:</strong> Free, supports forms, better for SPAs</li>
+                    <li><strong>Vercel:</strong> Free, great for React/Next.js</li>
+                    <li><strong>Cloudflare Pages:</strong> Free, fast CDN</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>🎯 Solution 3: Test Locally with HTML File</h2>
+        <div class="solution">
+            <div class="step">
+                <strong>Step 1:</strong> Save this test file as <code>test-local.html</code>:
+                <button onclick="downloadTestFile()">📥 Download Test File</button>
+            </div>
+
+            <div class="step">
+                <strong>Step 2:</strong> Open it directly in Chrome/Edge (not Firefox)
+                <br>File → Open → test-local.html
+            </div>
+
+            <div class="step">
+                <strong>Step 3:</strong> If it works locally but not on GitHub Pages:
+                <br>→ The issue is with GitHub Pages CORS/HTTPS
+                <br>→ Use Solution 2 (different hosting)
+            </div>
+        </div>
+
+        <h2>🎯 Solution 4: Quick Network Test</h2>
+        <div class="solution">
+            <button onclick="testSupabaseNow()">🧪 Test Supabase Connection Now</button>
+            <div id="quick-test-result" style="margin-top: 15px;"></div>
+        </div>
+
+        <h2>📋 Checklist</h2>
+        <div class="step">
+            <label><input type="checkbox"> Supabase project is NOT paused</label><br>
+            <label><input type="checkbox"> Project URL matches: cfapmolnnvemqjneaher.supabase.co</label><br>
+            <label><input type="checkbox"> RLS is disabled on drink_orders table (for testing)</label><br>
+            <label><input type="checkbox"> Anon key is correct</label><br>
+            <label><input type="checkbox"> Tested on different browser (Chrome/Edge)</label><br>
+            <label><input type="checkbox"> Tried localhost instead of GitHub Pages</label><br>
+        </div>
+
+        <h2>🆘 Still Not Working?</h2>
+        <div class="warning-box">
+            <strong>Alternative: Use REST API Directly</strong>
+            <p>If Supabase SDK continues to fail, you can use fetch() directly:</p>
+            <pre>
+// Instead of Supabase SDK
+const response = await fetch(
+    'https://cfapmolnnvemqjneaher.supabase.co/rest/v1/drink_orders',
+    {
+        method: 'POST',
+        headers: {
+            'apikey': 'YOUR_ANON_KEY',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(orderData)
+    }
+);
+const data = await response.json();</pre>
+        </div>
+    </div>
+
+    <script>
+        function downloadTestFile() {
+            const content = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Local Supabase Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+    <button onclick="testConnection()">Test Connection</button>
+    <div id="result"></div>
+    
+    <script>
+        const SUPABASE_URL = 'https://cfapmolnnvemqjneaher.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c';
+        
+        async function testConnection() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                const { data, error } = await client.from('drink_orders').select('id').limit(1);
+                
+                if (error) {
+                    resultDiv.innerHTML = '<p style="color:red">Error: ' + error.message + '</p>';
+                } else {
+                    resultDiv.innerHTML = '<p style="color:green">SUCCESS! Connected to Supabase!</p>';
+                }
+            } catch (err) {
+                resultDiv.innerHTML = '<p style="color:red">Error: ' + err.message + '</p>';
+            }
+        }
+    <\/script>
+</body>
+</html>`;
+            
+            const blob = new Blob([content], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'test-local.html';
+            a.click();
+        }
+
+        async function testSupabaseNow() {
+            const resultDiv = document.getElementById('quick-test-result');
+            resultDiv.innerHTML = '<p>🔄 Testing connection...</p>';
+            
+            try {
+                // Test basic connectivity
+                const response = await fetch('https://cfapmolnnvemqjneaher.supabase.co/rest/v1/', {
+                    method: 'HEAD',
+                    headers: {
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmYXBtb2xubnZlbXFqbmVhaGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MTQ3MDcsImV4cCI6MjA3NDI5MDcwN30._TJlyjzcf4oyfa6JHEXZUkeZCThMFR-aX8pfzE3fm5c'
+                    }
+                });
+                
+                resultDiv.innerHTML = `
+                    <div class="success-box">
+                        <strong>✅ Supabase Server Reachable!</strong><br>
+                        Status: ${response.status}<br>
+                        This means your Supabase project is online!<br>
+                        <strong>The issue might be RLS (Row Level Security)</strong><br>
+                        → Disable RLS on drink_orders table in Supabase Dashboard
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error-box">
+                        <strong>❌ Cannot Reach Supabase</strong><br>
+                        Error: ${error.message}<br><br>
+                        <strong>Most likely cause:</strong><br>
+                        🔴 Your Supabase project is <strong>PAUSED</strong><br>
+                        → Go to <a href="https://supabase.com/dashboard" target="_blank">Supabase Dashboard</a><br>
+                        → Find project "cfapmolnnvemqjneaher"<br>
+                        → Click "Restore Project"
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

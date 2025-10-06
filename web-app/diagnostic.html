@@ -92,6 +92,7 @@
         
         <button onclick="runAllTests()">🚀 Run All Tests</button>
         <button onclick="testSupabaseSDK()">📦 Test SDK Loading</button>
+        <button onclick="testNetwork()">🌐 Test Network</button>
         <button onclick="testConnection()">🔌 Test Connection</button>
         <button onclick="testInsert()">📝 Test Insert</button>
         <button onclick="clearResults()">🗑️ Clear Results</button>
@@ -130,6 +131,49 @@
             if (div) {
                 div.className = `test-result ${type}`;
                 div.innerHTML = message;
+            }
+        }
+
+        async function testNetwork() {
+            const loadingDiv = addLoading('network-test');
+            
+            try {
+                // Test 1: Basic internet connectivity
+                const googleTest = await fetch('https://www.google.com/favicon.ico', { 
+                    mode: 'no-cors',
+                    cache: 'no-cache'
+                });
+                
+                addResult('✅ <strong>Internet Connection OK</strong><br>Successfully reached google.com', 'success');
+                
+                // Test 2: Can we reach Supabase domain?
+                try {
+                    const supabaseReach = await fetch(SUPABASE_URL + '/rest/v1/', {
+                        method: 'HEAD',
+                        headers: {
+                            'apikey': SUPABASE_ANON_KEY
+                        }
+                    });
+                    
+                    updateResult('network-test', 
+                        `✅ <strong>Supabase Server Reachable</strong><br>Status: ${supabaseReach.status}<br>Can reach: ${SUPABASE_URL}`, 
+                        'success');
+                } catch (fetchError) {
+                    updateResult('network-test', 
+                        `❌ <strong>Cannot Reach Supabase Server</strong><br>` +
+                        `URL: ${SUPABASE_URL}<br>` +
+                        `Error: ${fetchError.message}<br>` +
+                        `<strong>Possible causes:</strong><br>` +
+                        `- Network firewall blocking HTTPS<br>` +
+                        `- Corporate proxy blocking Supabase<br>` +
+                        `- Supabase project paused/deleted<br>` +
+                        `- CORS policy issue`, 
+                        'error');
+                }
+            } catch (error) {
+                updateResult('network-test', 
+                    `❌ <strong>No Internet Connection</strong><br>Cannot reach any external servers.<br>Error: ${error.message}`, 
+                    'error');
             }
         }
 
@@ -227,6 +271,9 @@
             addResult('🚀 <strong>Running All Tests...</strong>', 'info');
             
             await testSupabaseSDK();
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            await testNetwork();
             await new Promise(resolve => setTimeout(resolve, 1500));
             
             await testConnection();
